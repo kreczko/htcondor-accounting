@@ -1,0 +1,74 @@
+# Byte-compiled / optimized / DLL files
+
+**pycache**/
+*.py[cod]
+*$py.class
+
+# C extensions
+
+*.so
+
+# Distribution / packaging
+
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+
+.venv/
+env/
+ENV/
+
+# Pixi / Conda / Mamba
+
+.pixi/
+conda-meta/
+
+# Testing / linting
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# IDEs / editors
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+
+.DS_Store
+Thumbs.db
+
+# Logs
+
+*.log
+
+# Project-specific runtime data
+
+archive/
+output/
+tmp/
+*.jsonl
+*.jsonl.zst
+*.parquet
+
+# Secrets / local configs
+
+*.secret
+*.key
+*.pem
+*.crt
+
+# Local overrides
+
+.env
+.env.*

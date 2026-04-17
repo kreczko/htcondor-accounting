@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "htcondor-accounting"
+version = "0.1.0"
+description = "HTCondor accounting extraction, normalization, and APEL export tool"
+readme = "README.md"
+authors = [
+{ name = "Luke Kreczko", email = "kreczko@cern.ch" }
+]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+
+dependencies = [
+    "htcondor",
+    "pydantic",
+    "rich",
+    "typer",
+    "zstandard",
+]
+
+[project.optional-dependencies]
+dev = [
+"pytest",
+"ruff",
+"mypy",
+]
+
+[project.scripts]
+htcondor-accounting = "htcondor_accounting.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
