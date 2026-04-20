@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+class SourceInfo(BaseModel):
+    system: str = Field(default="htcondor")
+    schedd: str
+    collector_host: Optional[str] = None
+    collected_at: str
+
+class JobInfo(BaseModel):
+    global_job_id: str
+    routed_from_job_id: Optional[str] = None
+    owner: str
+    local_user: Optional[str] = None
+
+class UsageInfo(BaseModel):
+    wall_seconds: int
+    cpu_user_seconds: int
+    cpu_sys_seconds: int
+    processors: int
+    memory_real_kb: Optional[int] = None
+    memory_virtual_kb: Optional[int] = None
+
+class TimingInfo(BaseModel):
+    queue_time: Optional[int] = None
+    start_time: Optional[int] = None
+    end_time: Optional[int] = None
+    status_time: Optional[int] = None
+
+class IdentityInfo(BaseModel):
+    dn: Optional[str] = None
+    fqan: Optional[str] = None
+    vo: Optional[str] = None
+    vo_group: Optional[str] = None
+    vo_role: Optional[str] = None
+    auth_method: Optional[str] = None
+    token_issuer: Optional[str] = None
+    token_subject: Optional[str] = None
+    token_groups: list[str] = Field(default_factory=list)
+
+class BenchmarkInfo(BaseModel):
+    benchmark_type: Optional[str] = None
+    site_baseline_per_core: Optional[float] = None
+    node_per_core: Optional[float] = None
+    scale_factor: Optional[float] = None
+
+class ExecutionInfo(BaseModel):
+    ce_host: Optional[str] = None
+    ce_id: Optional[str] = None
+    execute_node: Optional[str] = None
+    slot_name: Optional[str] = None
+
+class CanonicalJobRecord(BaseModel):
+    schema_version: int = 1
+    record_type: str = "job"
+    site_name: str
+    source: SourceInfo
+    job: JobInfo
+    usage: UsageInfo
+    timing: TimingInfo
+    identity: IdentityInfo = Field(default_factory=IdentityInfo)
+    benchmark: BenchmarkInfo = Field(default_factory=BenchmarkInfo)
+    execution: ExecutionInfo = Field(default_factory=ExecutionInfo)
