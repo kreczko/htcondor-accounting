@@ -10,7 +10,6 @@ type = "hepscore23"
 baseline_per_core = 20.0
 
 [extract]
-default_match = 100
 default_schedds = ["lcgce02.phy.bris.ac.uk"]
 
 [identity]
