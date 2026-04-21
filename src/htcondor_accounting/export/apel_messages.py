@@ -13,6 +13,7 @@ from htcondor_accounting.store.jsonl import read_jsonl_zst
 from htcondor_accounting.store.layout import (
     RunStamp,
     apel_manifest_path,
+    apel_staging_day_dir,
     apel_staging_message_path,
     derived_daily_jobs_file,
     ensure_parent_dir,
@@ -137,3 +138,13 @@ def export_apel_daily(output_root: Path, when: datetime, config: ApelConfig, run
         files_written=files_written,
         manifest_path=manifest_path,
     )
+
+
+def staged_apel_day_dir(output_root: Path, when: datetime, config: ApelConfig) -> Path:
+    if config.staging_dir.is_absolute():
+        return config.staging_dir / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
+    return apel_staging_day_dir(output_root, when)
+
+
+def staged_apel_files(output_root: Path, when: datetime, config: ApelConfig) -> list[Path]:
+    return sorted(staged_apel_day_dir(output_root, when, config).glob("*.msg"))

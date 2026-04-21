@@ -12,9 +12,10 @@ from rich.console import Console
 from rich.table import Table
 
 from htcondor_accounting.config.load import load_config, resolve_config_path
+from htcondor_accounting.export.apel_messages import export_apel_daily, staged_apel_files
+from htcondor_accounting.export.dirq import promote_staged_message
 from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
-from htcondor_accounting.export.apel_messages import export_apel_daily
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
 from htcondor_accounting.report.rollup import (
     RollupResult,
@@ -92,6 +93,12 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _resolved_output_root(config: Optional[Path], output_root: Optional[Path]) -> tuple[Path, Optional[Path]]:
     app_config = load_config(config)
     return output_root or app_config.storage.root, resolve_config_path(config)
+
+
+def _resolved_outgoing_root(output_root: Path, outgoing_dir: Path) -> Path:
+    if outgoing_dir.is_absolute():
+        return outgoing_dir
+    return output_root / outgoing_dir
 
 
 def _rollup_table(title: str, result: RollupResult) -> Table:
@@ -591,6 +598,36 @@ def export_apel_daily_command(
     summary.add_row("Manifest", str(result.manifest_path))
 
     console.print("[bold]Export APEL Daily[/bold]")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(summary)
+
+
+@app.command("push-apel-daily")
+def push_apel_daily_command(
+    day: str = typer.Option(..., help="Day to push, e.g. 2026-04-17"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for APEL data"),
+) -> None:
+    """Promote staged APEL message files into the live dirq-compatible outgoing queue."""
+    app_config = load_config(config)
+    resolved_output_root = output_root or app_config.storage.root
+    when = _parse_day(day)
+    staged_files = staged_apel_files(resolved_output_root, when, app_config.apel)
+    outgoing_root = _resolved_outgoing_root(resolved_output_root, app_config.apel.outgoing_dir)
+
+    results = [promote_staged_message(path, outgoing_root) for path in staged_files]
+    written = sum(1 for result in results if result.written)
+
+    summary = Table(title="APEL queue promotion")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Day", day)
+    summary.add_row("Staged files", str(len(staged_files)))
+    summary.add_row("Queue files written", str(written))
+    summary.add_row("Outgoing root", str(outgoing_root))
+
+    console.print("[bold]Push APEL Daily[/bold]")
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
     console.print(summary)

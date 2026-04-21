@@ -28,7 +28,8 @@ infrastructure_type = "grid"
 service_level_type = "hepscore23"
 service_level_value = 20.0
 staging_dir = "apel/staging"
-outgoing_dir = "/var/spool/apel/outgoing"
+# outgoing_dir = "/var/spool/apel/outgoing"
+outgoing_dir = "apel/outgoing"
 message_soft_limit_bytes = 800000
 message_hard_limit_bytes = 1000000
 

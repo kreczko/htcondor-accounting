@@ -507,6 +507,52 @@ def test_export_apel_daily_command_writes_staged_messages(tmp_path: Path) -> Non
     assert not (tmp_path / "outgoing").exists()
 
 
+def test_push_apel_daily_promotes_messages_into_dirq_queue(tmp_path: Path) -> None:
+    staged_dir = tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17"
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    (staged_dir / "20260421T132304Z-0001.msg").write_text("%%\nSite: TEST\n", encoding="utf-8")
+
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[apel]",
+                "enabled = true",
+                'submit_host = "submit.example"',
+                'machine_name = "worker.example"',
+                'queue_name = "condor"',
+                'infrastructure_description = "APEL-HTCondor"',
+                'infrastructure_type = "grid"',
+                'service_level_type = "hepscore23"',
+                "service_level_value = 20.0",
+                'staging_dir = "apel/staging"',
+                'outgoing_dir = "apel/outgoing"',
+                "message_soft_limit_bytes = 800000",
+                "message_hard_limit_bytes = 1000000",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["push-apel-daily", "--day", "2026-04-17", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    queue_files = [path for path in (tmp_path / "archive" / "apel" / "outgoing").rglob("*") if path.is_file()]
+
+    assert result.exit_code == 0
+    assert "Push APEL Daily" in result.stdout
+    assert "Staged files" in result.stdout
+    assert len(queue_files) == 1
+    assert len(queue_files[0].parent.name) == 8
+    assert len(queue_files[0].name) == 14
+
+
 def test_show_config_with_explicit_file(tmp_path: Path) -> None:
     config_path = tmp_path / "site.toml"
     config_path.write_text(

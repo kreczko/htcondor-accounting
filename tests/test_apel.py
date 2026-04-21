@@ -5,6 +5,7 @@ from pathlib import Path
 from htcondor_accounting.config.models import ApelConfig
 from htcondor_accounting.export.apel_messages import export_apel_daily, pack_apel_messages
 from htcondor_accounting.export.apel_records import apel_record_text
+from htcondor_accounting.export.dirq import dirq_components_from_bytes, promote_staged_message
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp
 
@@ -119,3 +120,30 @@ def test_export_apel_daily_writes_messages_and_manifest(tmp_path: Path) -> None:
         body = Path(entry["path"]).read_text(encoding="utf-8")
         assert body.startswith("%%\n")
         assert len(body.encode("utf-8")) == entry["bytes"]
+
+
+def test_dirq_components_use_md5_of_message_bytes() -> None:
+    message = b"%%\nSite: TEST\n"
+    subdir, filename = dirq_components_from_bytes(message)
+
+    assert len(subdir) == 8
+    assert len(filename) == 14
+    assert all(char in "0123456789abcdef" for char in subdir)
+    assert all(char in "0123456789abcdef" for char in filename)
+
+
+def test_promote_staged_message_is_idempotent(tmp_path: Path) -> None:
+    staged = tmp_path / "staging" / "sample.msg"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_text("%%\nSite: TEST\n", encoding="utf-8")
+
+    outgoing_root = tmp_path / "outgoing"
+    first = promote_staged_message(staged, outgoing_root)
+    second = promote_staged_message(staged, outgoing_root)
+
+    assert first.written is True
+    assert second.written is False
+    assert first.queue_path == second.queue_path
+    assert first.queue_path.exists()
+    assert len(first.queue_path.parent.name) == 8
+    assert len(first.queue_path.name) == 14
