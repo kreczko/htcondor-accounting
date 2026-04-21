@@ -117,6 +117,16 @@ def apel_manifest_path(root: Path, when: datetime, run_stamp: RunStamp) -> Path:
     return apel_manifest_day_dir(root, when) / f"{run_stamp.as_filename_component()}.json"
 
 
+def raw_history_day_dir(root: Path, when: datetime) -> Path:
+    """Return the raw history snapshot daily directory path."""
+    return root / "raw-history" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
+
+
+def raw_history_run_file(root: Path, when: datetime, source: str, run_stamp: RunStamp) -> Path:
+    """Return the raw history snapshot file path."""
+    return raw_history_day_dir(root, when) / f"{source}-{run_stamp.as_filename_component()}.jsonl.zst"
+
+
 def manifest_day_dir(root: Path, when: datetime) -> Path:
     """
     Return the manifest daily directory path.

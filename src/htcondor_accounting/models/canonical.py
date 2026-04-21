@@ -41,6 +41,14 @@ class IdentityInfo(BaseModel):
     token_subject: Optional[str] = None
     token_groups: list[str] = Field(default_factory=list)
 
+class AccountingInfo(BaseModel):
+    acct_group: Optional[str] = None
+    acct_group_user: Optional[str] = None
+    accounting_group: Optional[str] = None
+    route_name: Optional[str] = None
+    last_match_name: Optional[str] = None
+    last_job_router_name: Optional[str] = None
+
 class BenchmarkInfo(BaseModel):
     benchmark_type: Optional[str] = None
     site_baseline_per_core: Optional[float] = None
@@ -62,5 +70,6 @@ class CanonicalJobRecord(BaseModel):
     usage: UsageInfo
     timing: TimingInfo
     identity: IdentityInfo = Field(default_factory=IdentityInfo)
+    accounting: AccountingInfo = Field(default_factory=AccountingInfo)
     benchmark: BenchmarkInfo = Field(default_factory=BenchmarkInfo)
     execution: ExecutionInfo = Field(default_factory=ExecutionInfo)

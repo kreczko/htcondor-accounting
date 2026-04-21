@@ -17,6 +17,7 @@ from htcondor_accounting.store.layout import (
     derived_yearly_summary_path,
     manifest_day_dir,
     manifest_file,
+    raw_history_run_file,
 )
 
 def test_canonical_day_dir() -> None:
@@ -70,3 +71,11 @@ def test_apel_layout_paths() -> None:
 
     assert apel_staging_message_path(root, when, run_stamp, 1) == Path("archive/apel/staging/2026/04/17/20260421T123038Z-0001.msg")
     assert apel_manifest_path(root, when, run_stamp) == Path("archive/apel/manifests/2026/04/17/20260421T123038Z.json")
+
+
+def test_raw_history_layout_paths() -> None:
+    root = Path("archive")
+    when = datetime(2026, 4, 17, 12, 0, 0, tzinfo=timezone.utc)
+    run_stamp = RunStamp(datetime(2026, 4, 21, 12, 30, 38, tzinfo=timezone.utc))
+
+    assert raw_history_run_file(root, when, "ce02", run_stamp) == Path("archive/raw-history/2026/04/17/ce02-20260421T123038Z.jsonl.zst")

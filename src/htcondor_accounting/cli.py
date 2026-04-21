@@ -26,7 +26,13 @@ from htcondor_accounting.report.rollup import (
     derive_yearly,
 )
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
-from htcondor_accounting.store.layout import RunStamp, canonical_run_file, ensure_parent_dir, manifest_file
+from htcondor_accounting.store.layout import (
+    RunStamp,
+    canonical_run_file,
+    ensure_parent_dir,
+    manifest_file,
+    raw_history_run_file,
+)
 from htcondor_accounting.version import __version__
 
 app = typer.Typer(help="HTCondor accounting extraction, normalization, and APEL export utilities.")
@@ -159,6 +165,12 @@ class InspectVerbosity(str, Enum):
     full = "full"
 
 
+class InspectFormat(str, Enum):
+    table = "table"
+    json = "json"
+    ndjson = "ndjson"
+
+
 def _format_unix_timestamp(value: Any) -> str:
     if value is None:
         return "-"
@@ -281,6 +293,49 @@ def _inspect_row(record: dict[str, Any], verbosity: InspectVerbosity) -> list[st
         )
 
     return row
+
+
+def _inspect_object(record: dict[str, Any], verbosity: InspectVerbosity) -> dict[str, Any]:
+    parsed_job = _parse_global_job_id(_field(record, "job", "global_job_id"))
+    base = {
+        "schedd_job_id": f"{_field(record, 'source', 'schedd') or parsed_job['schedd']}#{parsed_job['job_id']}",
+        "start_time": _field(record, "timing", "start_time") or parsed_job["timestamp"],
+        "end_time": _field(record, "timing", "end_time"),
+        "user": _field(record, "job", "local_user") or _field(record, "job", "owner"),
+        "vo": _field(record, "identity", "vo"),
+        "scale_factor": _field(record, "benchmark", "scale_factor"),
+    }
+
+    if verbosity == InspectVerbosity.medium:
+        base["wall_seconds"] = _field(record, "usage", "wall_seconds")
+        base["identity"] = _identity_display(record)
+
+    if verbosity == InspectVerbosity.full:
+        return _full_record(record)
+
+    return base
+
+
+def _raw_ad_bucket_datetime(ad: dict[str, Any]) -> datetime:
+    for key in ("CompletionDate", "EnteredCurrentStatus", "JobStartDate"):
+        value = ad.get(key)
+        if value is None:
+            continue
+        try:
+            return datetime.fromtimestamp(int(value), tz=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+    global_job_id = ad.get("GlobalJobId", "<missing-global-job-id>")
+    raise ValueError(f"Raw ad has no usable timing bucket: {global_job_id}")
+
+
+def bucket_raw_ads_by_day(records: Iterable[dict[str, Any]]) -> dict[datetime, list[dict[str, Any]]]:
+    bucketed: dict[datetime, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        bucket_dt = _raw_ad_bucket_datetime(record)
+        day = datetime(bucket_dt.year, bucket_dt.month, bucket_dt.day, tzinfo=timezone.utc)
+        bucketed[day].append(record)
+    return dict(sorted(bucketed.items()))
 
 
 @app.command()
@@ -416,6 +471,12 @@ def extract(
 def inspect(
     path: Path = typer.Argument(..., help="Path to a canonical record file or directory"),
     limit: int = typer.Option(20, min=1, help="Maximum number of jobs to show"),
+    output_format: InspectFormat = typer.Option(
+        InspectFormat.table,
+        "--format",
+        case_sensitive=False,
+        help="Output format: table, json, or ndjson",
+    ),
     verbosity: InspectVerbosity = typer.Option(
         InspectVerbosity.least,
         "--verbosity",
@@ -427,25 +488,41 @@ def inspect(
     """Inspect canonical accounting data."""
     paths = _iter_inspect_paths(path)
     if not paths:
-        console.print(f"[yellow]No .jsonl.zst files found under {path}[/yellow]")
+        if output_format == InspectFormat.table:
+            console.print(f"[yellow]No .jsonl.zst files found under {path}[/yellow]")
+        else:
+            console.print("[]")
         raise typer.Exit(code=1)
 
     rows_shown = 0
     total_records = 0
-    table = _inspect_table(verbosity) if verbosity != InspectVerbosity.full else None
-    full_records: list[dict[str, Any]] = []
+    table = _inspect_table(verbosity) if output_format == InspectFormat.table and verbosity != InspectVerbosity.full else None
+    rendered_records: list[dict[str, Any]] = []
 
     for record in _iter_records(paths):
         total_records += 1
         if rows_shown >= limit:
             continue
 
-        if verbosity == InspectVerbosity.full:
-            full_records.append(_full_record(record))
-        else:
-            assert table is not None
-            table.add_row(*_inspect_row(record, verbosity))
+        rendered = _inspect_object(record, verbosity)
+        rendered_records.append(rendered)
+
+        if output_format == InspectFormat.table:
+            if verbosity == InspectVerbosity.full:
+                pass
+            else:
+                assert table is not None
+                table.add_row(*_inspect_row(record, verbosity))
         rows_shown += 1
+
+    if output_format == InspectFormat.json:
+        typer.echo(json.dumps(rendered_records, sort_keys=True))
+        return
+
+    if output_format == InspectFormat.ndjson:
+        for record in rendered_records:
+            typer.echo(json.dumps(record, sort_keys=True))
+        return
 
     console.print("[bold]Inspect[/bold]")
     console.print(f"  path         = {path}")
@@ -455,12 +532,91 @@ def inspect(
     console.print(f"  verbosity    = {verbosity.value}")
 
     if verbosity == InspectVerbosity.full:
-        for index, record in enumerate(full_records, start=1):
+        for index, record in enumerate(rendered_records, start=1):
             console.print(f"[bold]Job {index}[/bold]")
             console.print_json(json.dumps(record, sort_keys=True))
     else:
         assert table is not None
         console.print(table)
+
+
+@app.command("snapshot-history")
+def snapshot_history(
+    start: str = typer.Option(..., help="Start date/time, e.g. 2026-04-17 or 2026-04-17T00:00:00"),
+    end: str = typer.Option(..., help="End date/time, e.g. 2026-04-17 or 2026-04-17T23:59:59"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    schedd: Optional[List[str]] = typer.Option(
+        None,
+        "--schedd",
+        help="Schedd hostname to query; may be given multiple times",
+    ),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for raw-history output"),
+    match: Optional[int] = typer.Option(None, help="Maximum number of history ads to fetch per schedd"),
+) -> None:
+    """Snapshot raw HTCondor history ads into compressed JSONL files."""
+    from htcondor_accounting.extract.htcondor import HistoryQuery, fetch_history_ads
+
+    app_config = load_config(config)
+    resolved_schedds = list(schedd) if schedd is not None else list(app_config.extract.default_schedds)
+    resolved_output_root = output_root or app_config.storage.root
+    resolved_match = match if match is not None else app_config.extract.default_match
+
+    start_dt = _parse_day_or_timestamp(start, end_of_day=False)
+    end_dt = _parse_day_or_timestamp(end, end_of_day=True)
+    constraint = (
+        f"JobStatus == 4 && "
+        f"EnteredCurrentStatus >= {int(start_dt.timestamp())} && "
+        f"EnteredCurrentStatus <= {int(end_dt.timestamp())}"
+    )
+
+    run_stamp = RunStamp.now()
+    summary = Table(title="Raw history snapshot")
+    summary.add_column("Schedd")
+    summary.add_column("Day")
+    summary.add_column("Output file")
+    summary.add_column("Records", justify="right")
+
+    schedd_targets = resolved_schedds or [None]
+    total_records = 0
+    total_files = 0
+    for schedd_name in schedd_targets:
+        query = HistoryQuery(
+            schedd_name=schedd_name,
+            match=resolved_match,
+            constraint=constraint,
+        )
+        ads = fetch_history_ads(query)
+        resolved_schedd_name = str(schedd_name or "local")
+        source_name = _source_name(resolved_schedd_name)
+
+        for bucket_day, day_ads in bucket_raw_ads_by_day(ads).items():
+            output_path = raw_history_run_file(
+                resolved_output_root,
+                when=bucket_day,
+                source=source_name,
+                run_stamp=run_stamp,
+            )
+            written = write_jsonl_zst(output_path, day_ads)
+            total_records += written
+            total_files += 1
+            summary.add_row(
+                resolved_schedd_name,
+                bucket_day.strftime("%Y-%m-%d"),
+                str(output_path),
+                str(written),
+            )
+
+    console.print("[bold]Snapshot History[/bold]")
+    console.print(f"  start      = {start_dt.isoformat()}")
+    console.print(f"  end        = {end_dt.isoformat()}")
+    console.print(f"  constraint = {constraint}")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(f"  schedds    = {resolved_schedds or ['local']}")
+    console.print(f"  match      = {resolved_match}")
+    console.print(f"  files      = {total_files}")
+    console.print(f"  total      = {total_records}")
+    console.print(summary)
 
 
 @app.command("derive-weekly")

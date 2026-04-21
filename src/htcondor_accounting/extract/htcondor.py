@@ -7,6 +7,7 @@ from typing import Any, Iterable
 import htcondor2 as htcondor
 
 from htcondor_accounting.models.canonical import (
+    AccountingInfo,
     BenchmarkInfo,
     CanonicalJobRecord,
     ExecutionInfo,
@@ -71,12 +72,12 @@ def ad_token_groups(ad: dict[str, Any]) -> list[str]:
     return []
 
 
-def detect_auth_method(ad: dict[str, Any]) -> str | None:
-    if ad.get("x509UserProxySubject") or ad.get("x509userproxysubject"):
-        return "x509"
+def detect_auth_method(ad: dict[str, Any]) -> str:
     if ad.get("orig_AuthTokenIssuer") or ad.get("orig_AuthTokenSubject"):
         return "scitoken"
-    return None
+    if ad.get("x509UserProxySubject") or ad.get("x509userproxysubject"):
+        return "x509"
+    return "local"
 
 
 def resolve_identity(ad: dict[str, Any]) -> IdentityInfo:
@@ -151,6 +152,14 @@ def canonical_from_ad(
             status_time=ad_int(ad, "EnteredCurrentStatus"),
         ),
         identity=resolve_identity(ad),
+        accounting=AccountingInfo(
+            acct_group=ad_str(ad, "AcctGroup"),
+            acct_group_user=ad_str(ad, "AcctGroupUser"),
+            accounting_group=ad_str(ad, "AccountingGroup"),
+            route_name=ad_str(ad, "RouteName"),
+            last_match_name=ad_str(ad, "LastMatchName"),
+            last_job_router_name=ad_str(ad, "LastJobRouterName"),
+        ),
         benchmark=BenchmarkInfo(
             benchmark_type="hepscore23"
             if ad.get("MachineAttrACCOUNTING_SCALE_FACTOR0") is not None
@@ -202,6 +211,12 @@ def fetch_history_ads(query: HistoryQuery) -> list[dict[str, Any]]:
         "orig_AuthTokenIssuer",
         "orig_AuthTokenSubject",
         "orig_AuthTokenGroups",
+        "AcctGroup",
+        "AcctGroupUser",
+        "AccountingGroup",
+        "RouteName",
+        "LastMatchName",
+        "LastJobRouterName",
     ]
 
     ads = schedd.history(

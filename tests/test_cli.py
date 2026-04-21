@@ -617,6 +617,46 @@ def test_inspect_least_verbosity_shows_compact_columns(tmp_path: Path) -> None:
     assert "Wallclock" not in result.stdout
 
 
+def test_inspect_json_format_outputs_clean_json_array(tmp_path: Path) -> None:
+    output_path = tmp_path / "sample.jsonl.zst"
+    write_jsonl_zst(output_path, [_record("lcgce02.phy.bris.ac.uk#684860.0#1776420670", "alice", "atlas", 1.23456)])
+
+    result = runner.invoke(
+        app,
+        ["inspect", str(output_path), "--format", "json", "--verbosity", "full"],
+        terminal_width=160,
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert isinstance(payload, list)
+    assert payload[0]["job"]["global_job_id"] == "lcgce02.phy.bris.ac.uk#684860.0#1776420670"
+    assert payload[0]["inspect"]["global_job_id"]["job_id"] == "684860.0"
+
+
+def test_inspect_ndjson_format_outputs_one_record_per_line(tmp_path: Path) -> None:
+    output_path = tmp_path / "sample.jsonl.zst"
+    write_jsonl_zst(
+        output_path,
+        [
+            _record("lcgce02.phy.bris.ac.uk#684860.0#1776420670", "alice", "atlas", 1.23456),
+            _record("lcgce02.phy.bris.ac.uk#684861.0#1776420671", "bob", "cms", 1.0),
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        ["inspect", str(output_path), "--format", "ndjson", "--verbosity", "medium"],
+        terminal_width=160,
+    )
+
+    assert result.exit_code == 0
+    lines = [json.loads(line) for line in result.stdout.strip().splitlines()]
+    assert len(lines) == 2
+    assert lines[0]["user"] == "alice"
+    assert lines[1]["vo"] == "cms"
+
+
 def test_inspect_medium_verbosity_adds_wallclock_and_identity(tmp_path: Path) -> None:
     output_path = tmp_path / "sample.jsonl.zst"
     record = _record("lcgce02.phy.bris.ac.uk#684860.0#1776420670", "alice", "atlas", 1.23456)
@@ -668,3 +708,58 @@ def test_inspect_directory_respects_limit(tmp_path: Path) -> None:
     assert "files        = 2" in result.stdout
     assert "total jobs   = 2" in result.stdout
     assert "showing jobs = 1" in result.stdout
+
+
+def test_snapshot_history_writes_raw_ads_partitioned_by_day(monkeypatch, tmp_path: Path) -> None:
+    class FakeHistoryQuery:
+        def __init__(self, schedd_name, match, constraint):
+            self.schedd_name = schedd_name
+            self.match = match
+            self.constraint = constraint
+
+    fake_module = ModuleType("htcondor_accounting.extract.htcondor")
+
+    def fake_fetch_history_ads(query):
+        del query
+        return [
+            {
+                "GlobalJobId": "job-001",
+                "CompletionDate": 1776470399,
+                "EnteredCurrentStatus": 1776470399,
+                "JobStartDate": 1776386139,
+            },
+            {
+                "GlobalJobId": "job-002",
+                "CompletionDate": 1776470400,
+                "EnteredCurrentStatus": 1776470400,
+                "JobStartDate": 1776386139,
+            },
+        ]
+
+    fake_module.HistoryQuery = FakeHistoryQuery
+    fake_module.fetch_history_ads = fake_fetch_history_ads
+    monkeypatch.setitem(__import__("sys").modules, "htcondor_accounting.extract.htcondor", fake_module)
+
+    output_root = tmp_path / "archive"
+    result = runner.invoke(
+        app,
+        [
+            "snapshot-history",
+            "--start",
+            "2026-04-17",
+            "--end",
+            "2026-04-18",
+            "--output-root",
+            str(output_root),
+            "--schedd",
+            "lcgce02.phy.bris.ac.uk",
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert (output_root / "raw-history" / "2026" / "04" / "17").exists()
+    assert (output_root / "raw-history" / "2026" / "04" / "18").exists()
+    assert len(list((output_root / "raw-history" / "2026" / "04" / "17").glob("*.jsonl.zst"))) == 1
+    assert len(list((output_root / "raw-history" / "2026" / "04" / "18").glob("*.jsonl.zst"))) == 1
+    assert "Snapshot History" in result.stdout
