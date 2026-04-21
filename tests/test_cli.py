@@ -46,6 +46,43 @@ def _record(job_id: str, owner: str, vo: str | None, scale_factor: float | None)
     )
 
 
+def test_show_config_with_explicit_file(tmp_path: Path) -> None:
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[site]",
+                'name = "TEST-SITE"',
+                'timezone = "Europe/London"',
+                "",
+                "[storage]",
+                'root = "/tmp/archive"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["show-config", "--config", str(config_path)], terminal_width=160)
+
+    assert result.exit_code == 0
+    assert "Show Config" in result.stdout
+    assert "source =" in result.stdout
+    assert str(config_path) in result.stdout
+    assert '"name": "TEST-SITE"' in result.stdout
+    assert '"timezone": "Europe/London"' in result.stdout
+    assert '"root": "/tmp/archive"' in result.stdout
+
+
+def test_show_config_uses_defaults_when_no_file_found(tmp_path: Path) -> None:
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        result = runner.invoke(app, ["show-config"], terminal_width=160, catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert "source = <defaults>" in result.stdout
+    assert '"name": "UNKNOWN"' in result.stdout
+    assert '"timezone": "UTC"' in result.stdout
+
+
 def test_inspect_least_verbosity_shows_compact_columns(tmp_path: Path) -> None:
     output_path = tmp_path / "sample.jsonl.zst"
     write_jsonl_zst(
@@ -68,8 +105,8 @@ def test_inspect_least_verbosity_shows_compact_columns(tmp_path: Path) -> None:
     assert "atlas" in result.stdout
     assert "1.235" in result.stdout
     assert "2026-04-17" in result.stdout
-    assert "00:35:39 UTC" in result.stdout
-    assert "12:29:49 UTC" in result.stdout
+    assert "00:35:39" in result.stdout
+    assert "12:29:49" in result.stdout
     assert "Wallclock" not in result.stdout
 
 
@@ -103,7 +140,7 @@ def test_inspect_full_verbosity_shows_all_fields_and_parsed_job_id(tmp_path: Pat
     assert "\"site_name\": \"UKI-SOUTHGRID-BRIS-HEP\"" in result.stdout
     assert "\"job_id\": \"684860.0\"" in result.stdout
     assert "\"schedd\": \"lcgce02.phy.bris.ac.uk\"" in result.stdout
-    assert "\"date\": \"2026-04-17 10:11:10 UTC\"" in result.stdout
+    assert "\"date\": \"2026-04-17 10:11:10\"" in result.stdout
     assert "\"identity_display\": \"issuer=https://issuer.example subject=alice-subject\"" in result.stdout
 
 

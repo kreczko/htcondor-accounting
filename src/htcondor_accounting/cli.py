@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from htcondor_accounting.config.load import load_config, resolve_config_path
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, canonical_run_file
 
@@ -320,6 +321,19 @@ def inspect(
     else:
         assert table is not None
         console.print(table)
+
+
+@app.command("show-config")
+def show_config(
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+) -> None:
+    """Show the resolved application configuration."""
+    resolved_path = resolve_config_path(config)
+    app_config = load_config(config)
+
+    console.print("[bold]Show Config[/bold]")
+    console.print(f"  source = {resolved_path if resolved_path is not None else '<defaults>'}")
+    console.print_json(json.dumps(app_config.model_dump(mode='json'), sort_keys=True))
 
 
 def _iter_records(paths: Iterable[Path]) -> Iterable[dict[str, Any]]:

@@ -15,16 +15,22 @@ DEFAULT_CONFIG_PATHS = [
 ]
 
 
-def load_config(path: Path | None = None) -> AppConfig:
+def resolve_config_path(path: Path | None = None) -> Path | None:
     if path is not None:
-        with path.open("rb") as stream:
-            data: dict[str, Any] = tomllib.load(stream)
-        return AppConfig.model_validate(data)
+        return path
 
     for candidate in DEFAULT_CONFIG_PATHS:
         if candidate.exists():
-            with candidate.open("rb") as stream:
-                data = tomllib.load(stream)
-            return AppConfig.model_validate(data)
+            return candidate
+
+    return None
+
+
+def load_config(path: Path | None = None) -> AppConfig:
+    resolved_path = resolve_config_path(path)
+    if resolved_path is not None:
+        with resolved_path.open("rb") as stream:
+            data: dict[str, Any] = tomllib.load(stream)
+        return AppConfig.model_validate(data)
 
     return AppConfig()
