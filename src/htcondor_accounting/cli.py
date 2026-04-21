@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -11,6 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from htcondor_accounting.config.load import load_config, resolve_config_path
+from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, canonical_run_file
@@ -48,6 +50,27 @@ def _source_name(schedd_name: str) -> str:
     if schedd_name == "local":
         return "local"
     return schedd_name.split(".")[0]
+
+
+def record_bucket_datetime(record: CanonicalJobRecord) -> datetime:
+    for value in (
+        record.timing.end_time,
+        record.timing.status_time,
+        record.timing.start_time,
+    ):
+        if value is not None:
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+
+    raise ValueError(f"Record has no usable timing bucket: {record.job.global_job_id}")
+
+
+def bucket_records_by_day(records: Iterable[CanonicalJobRecord]) -> dict[datetime, list[CanonicalJobRecord]]:
+    bucketed: dict[datetime, list[CanonicalJobRecord]] = defaultdict(list)
+    for record in records:
+        bucket_dt = record_bucket_datetime(record)
+        day = datetime(bucket_dt.year, bucket_dt.month, bucket_dt.day, tzinfo=timezone.utc)
+        bucketed[day].append(record)
+    return dict(sorted(bucketed.items()))
 
 
 def _iter_inspect_paths(path: Path) -> list[Path]:
@@ -253,27 +276,32 @@ def extract(
 
     summary = Table(title="Extraction summary")
     summary.add_column("Schedd")
+    summary.add_column("Day")
     summary.add_column("Output file")
     summary.add_column("Records", justify="right")
 
     total_records = 0
+    total_files = 0
 
     for schedd_name, records in records_by_schedd.items():
         source_name = _source_name(schedd_name)
-        output_path = canonical_run_file(
-            resolved_output_root,
-            when=start_dt,
-            source=source_name,
-            run_stamp=run_stamp,
-        )
-        written = write_jsonl_zst(output_path, records)
-        total_records += written
+        for bucket_day, day_records in bucket_records_by_day(records).items():
+            output_path = canonical_run_file(
+                resolved_output_root,
+                when=bucket_day,
+                source=source_name,
+                run_stamp=run_stamp,
+            )
+            written = write_jsonl_zst(output_path, day_records)
+            total_records += written
+            total_files += 1
 
-        summary.add_row(
-            schedd_name,
-            str(output_path),
-            str(written),
-        )
+            summary.add_row(
+                schedd_name,
+                bucket_day.strftime("%Y-%m-%d"),
+                str(output_path),
+                str(written),
+            )
 
     console.print("[bold]Extract[/bold]")
     console.print(f"  start      = {start_dt.isoformat()}")
@@ -284,6 +312,7 @@ def extract(
     console.print(f"  output     = {resolved_output_root}")
     console.print(f"  schedds    = {resolved_schedds or ['local']}")
     console.print(f"  match      = {resolved_match}")
+    console.print(f"  files      = {total_files}")
     console.print(f"  total      = {total_records}")
     console.print(summary)
 

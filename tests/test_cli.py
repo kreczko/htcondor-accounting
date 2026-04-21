@@ -181,6 +181,57 @@ def test_extract_cli_arguments_override_config(monkeypatch, tmp_path: Path) -> N
     assert "match      = 10" in result.stdout
 
 
+def test_extract_buckets_records_by_record_day(monkeypatch, tmp_path: Path) -> None:
+    class FakeHistoryQuery:
+        def __init__(self, schedd_name, match, constraint):
+            self.schedd_name = schedd_name
+            self.match = match
+            self.constraint = constraint
+
+    fake_module = ModuleType("htcondor_accounting.extract.htcondor")
+
+    def fake_extract_many_canonical_records(site_name, schedd_names, base_query):
+        del site_name, schedd_names, base_query
+        first = _record("job-001", "alice", "atlas", 1.0)
+        first.timing.end_time = 1776470399  # 2026-04-17 23:59:59 UTC
+        second = _record("job-002", "bob", "cms", 1.0)
+        second.timing.end_time = 1776470400  # 2026-04-18 00:00:00 UTC
+        return {"lcgce02.phy.bris.ac.uk": [first, second]}
+
+    fake_module.HistoryQuery = FakeHistoryQuery
+    fake_module.extract_many_canonical_records = fake_extract_many_canonical_records
+    monkeypatch.setitem(__import__("sys").modules, "htcondor_accounting.extract.htcondor", fake_module)
+
+    output_root = tmp_path / "archive"
+    result = runner.invoke(
+        app,
+        [
+            "extract",
+            "--start",
+            "2024-01-01",
+            "--end",
+            "2026-04-30",
+            "--output-root",
+            str(output_root),
+            "--site-name",
+            "TEST-SITE",
+        ],
+        terminal_width=200,
+    )
+
+    first_path = output_root / "canonical" / "2026" / "04" / "17"
+    second_path = output_root / "canonical" / "2026" / "04" / "18"
+
+    assert result.exit_code == 0
+    assert first_path.exists()
+    assert second_path.exists()
+    assert len(list(first_path.glob("*.jsonl.zst"))) == 1
+    assert len(list(second_path.glob("*.jsonl.zst"))) == 1
+    assert "files      = 2" in result.stdout
+    assert "2026-04-17" in result.stdout
+    assert "2026-04-18" in result.stdout
+
+
 def test_derive_daily_command_creates_outputs(tmp_path: Path) -> None:
     day_dir = tmp_path / "archive" / "canonical" / "2026" / "04" / "17"
     write_jsonl_zst(
