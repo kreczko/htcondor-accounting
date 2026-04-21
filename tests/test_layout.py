@@ -9,6 +9,8 @@ from htcondor_accounting.store.layout import (
     derived_daily_duplicates_path,
     derived_daily_jobs_file,
     derived_daily_summary_path,
+    manifest_day_dir,
+    manifest_file,
 )
 
 def test_canonical_day_dir() -> None:
@@ -36,3 +38,11 @@ def test_derived_daily_layout_paths() -> None:
     assert derived_daily_jobs_file(root, when) == Path("archive/derived/daily/2026/04/17/jobs.jsonl.zst")
     assert derived_daily_summary_path(root, when) == Path("archive/derived/daily/2026/04/17/summary.json")
     assert derived_daily_duplicates_path(root, when) == Path("archive/derived/daily/2026/04/17/duplicates.json")
+
+
+def test_manifest_layout_paths() -> None:
+    root = Path("archive")
+    run_stamp = RunStamp(datetime(2026, 4, 21, 12, 30, 38, tzinfo=timezone.utc))
+
+    assert manifest_day_dir(root, run_stamp.timestamp) == Path("archive/manifests/2026/04/21")
+    assert manifest_file(root, run_stamp) == Path("archive/manifests/2026/04/21/20260421T123038Z.json")

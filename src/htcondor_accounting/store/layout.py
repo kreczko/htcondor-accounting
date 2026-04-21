@@ -57,6 +57,21 @@ def derived_daily_duplicates_path(root: Path, when: datetime) -> Path:
     return derived_daily_dir(root, when) / "duplicates.json"
 
 
+def manifest_day_dir(root: Path, when: datetime) -> Path:
+    """
+    Return the manifest daily directory path.
+
+    Example:
+        archive/manifests/2026/04/21
+    """
+    return root / "manifests" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
+
+
+def manifest_file(root: Path, run_stamp: RunStamp) -> Path:
+    """Return the manifest JSON path for an extraction run stamp."""
+    return manifest_day_dir(root, run_stamp.timestamp) / f"{run_stamp.as_filename_component()}.json"
+
+
 def canonical_run_file(root: Path, when: datetime, source: str, run_stamp: RunStamp) -> Path:
     """
     Return the path for a canonical run file.

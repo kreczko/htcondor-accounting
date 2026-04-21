@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import ModuleType
+import json
 
 from typer.testing import CliRunner
 
@@ -108,6 +109,7 @@ def test_extract_uses_config_defaults(monkeypatch, tmp_path: Path) -> None:
     assert "site       = CONFIG-SITE" in result.stdout
     assert "output     = /tmp/config-archive" in result.stdout
     assert "match      = 250" in result.stdout
+    assert "manifest   = /tmp/config-archive/manifests/" in result.stdout
 
 
 def test_extract_cli_arguments_override_config(monkeypatch, tmp_path: Path) -> None:
@@ -230,6 +232,64 @@ def test_extract_buckets_records_by_record_day(monkeypatch, tmp_path: Path) -> N
     assert "files      = 2" in result.stdout
     assert "2026-04-17" in result.stdout
     assert "2026-04-18" in result.stdout
+
+
+def test_extract_writes_manifest_with_correct_total_records(monkeypatch, tmp_path: Path) -> None:
+    class FakeHistoryQuery:
+        def __init__(self, schedd_name, match, constraint):
+            self.schedd_name = schedd_name
+            self.match = match
+            self.constraint = constraint
+
+    fake_module = ModuleType("htcondor_accounting.extract.htcondor")
+
+    def fake_extract_many_canonical_records(site_name, schedd_names, base_query):
+        del site_name, schedd_names, base_query
+        first = _record("job-001", "alice", "atlas", 1.0)
+        first.timing.end_time = 1776470399
+        second = _record("job-002", "bob", "cms", 1.0)
+        second.timing.end_time = 1776470400
+        return {"lcgce02.phy.bris.ac.uk": [first, second]}
+
+    fake_module.HistoryQuery = FakeHistoryQuery
+    fake_module.extract_many_canonical_records = fake_extract_many_canonical_records
+    monkeypatch.setitem(__import__("sys").modules, "htcondor_accounting.extract.htcondor", fake_module)
+
+    output_root = tmp_path / "archive"
+    result = runner.invoke(
+        app,
+        [
+            "extract",
+            "--start",
+            "2026-04-17",
+            "--end",
+            "2026-04-18",
+            "--output-root",
+            str(output_root),
+            "--site-name",
+            "TEST-SITE",
+        ],
+        terminal_width=200,
+    )
+
+    manifest_paths = list((output_root / "manifests").rglob("*.json"))
+
+    assert result.exit_code == 0
+    assert len(manifest_paths) == 1
+
+    manifest = json.loads(manifest_paths[0].read_text(encoding="utf-8"))
+    assert manifest["record_type"] == "extract_manifest"
+    assert manifest["tool_version"] == "0.1.0"
+    assert manifest["site_name"] == "TEST-SITE"
+    assert manifest["total_records"] == 2
+    assert manifest["files_written_count"] == 2
+    assert manifest["schedds"] == ["lcgce02.phy.bris.ac.uk"]
+    assert len(manifest["files_written"]) == 2
+    assert manifest["files_written"][0]["day"] == "2026-04-17"
+    assert manifest["files_written"][1]["day"] == "2026-04-18"
+    assert manifest["files_written"][0]["records"] == 1
+    assert manifest["files_written"][1]["records"] == 1
+    assert "manifest   =" in result.stdout
 
 
 def test_derive_daily_command_creates_outputs(tmp_path: Path) -> None:

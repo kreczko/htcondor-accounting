@@ -13,9 +13,11 @@ from rich.table import Table
 
 from htcondor_accounting.config.load import load_config, resolve_config_path
 from htcondor_accounting.models.canonical import CanonicalJobRecord
+from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
-from htcondor_accounting.store.layout import RunStamp, canonical_run_file
+from htcondor_accounting.store.layout import RunStamp, canonical_run_file, ensure_parent_dir, manifest_file
+from htcondor_accounting.version import __version__
 
 app = typer.Typer(help="HTCondor accounting extraction, normalization, and APEL export utilities.")
 console = Console()
@@ -71,6 +73,11 @@ def bucket_records_by_day(records: Iterable[CanonicalJobRecord]) -> dict[datetim
         day = datetime(bucket_dt.year, bucket_dt.month, bucket_dt.day, tzinfo=timezone.utc)
         bucketed[day].append(record)
     return dict(sorted(bucketed.items()))
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    ensure_parent_dir(path)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _iter_inspect_paths(path: Path) -> list[Path]:
@@ -273,6 +280,7 @@ def extract(
         schedd_names=resolved_schedds or None,
         base_query=base_query,
     )
+    manifest_schedds = sorted(records_by_schedd.keys()) if records_by_schedd else (resolved_schedds or ["local"])
 
     summary = Table(title="Extraction summary")
     summary.add_column("Schedd")
@@ -282,6 +290,8 @@ def extract(
 
     total_records = 0
     total_files = 0
+    manifest_entries: list[ExtractManifestFileEntry] = []
+    resolved_config_path = resolve_config_path(config)
 
     for schedd_name, records in records_by_schedd.items():
         source_name = _source_name(schedd_name)
@@ -295,6 +305,15 @@ def extract(
             written = write_jsonl_zst(output_path, day_records)
             total_records += written
             total_files += 1
+            manifest_entries.append(
+                ExtractManifestFileEntry(
+                    schedd=schedd_name,
+                    source_name=source_name,
+                    day=bucket_day.strftime("%Y-%m-%d"),
+                    path=str(output_path),
+                    records=written,
+                )
+            )
 
             summary.add_row(
                 schedd_name,
@@ -303,17 +322,37 @@ def extract(
                 str(written),
             )
 
+    manifest_entries.sort(key=lambda entry: (entry.schedd, entry.day, entry.path))
+    manifest_path = manifest_file(resolved_output_root, run_stamp)
+    manifest = ExtractManifest(
+        tool_version=__version__,
+        run_stamp=run_stamp.as_filename_component(),
+        site_name=resolved_site_name,
+        start=start_dt.isoformat(),
+        end=end_dt.isoformat(),
+        constraint=constraint,
+        match=resolved_match,
+        schedds=manifest_schedds,
+        output_root=str(resolved_output_root),
+        files_written=manifest_entries,
+        total_records=total_records,
+        files_written_count=len(manifest_entries),
+        source_config_path=str(resolved_config_path) if resolved_config_path is not None else None,
+    )
+    _write_json(manifest_path, manifest.model_dump(mode="json"))
+
     console.print("[bold]Extract[/bold]")
     console.print(f"  start      = {start_dt.isoformat()}")
     console.print(f"  end        = {end_dt.isoformat()}")
     console.print(f"  constraint = {constraint}")
-    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  config     = {resolved_config_path or '<defaults>'}")
     console.print(f"  site       = {resolved_site_name}")
     console.print(f"  output     = {resolved_output_root}")
     console.print(f"  schedds    = {resolved_schedds or ['local']}")
     console.print(f"  match      = {resolved_match}")
     console.print(f"  files      = {total_files}")
     console.print(f"  total      = {total_records}")
+    console.print(f"  manifest   = {manifest_path}")
     console.print(summary)
 
 
