@@ -1,7 +1,15 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from htcondor_accounting.store.layout import RunStamp, canonical_day_dir, canonical_run_file
+from htcondor_accounting.store.layout import (
+    RunStamp,
+    canonical_day_dir,
+    canonical_run_file,
+    derived_daily_dir,
+    derived_daily_duplicates_path,
+    derived_daily_jobs_file,
+    derived_daily_summary_path,
+)
 
 def test_canonical_day_dir() -> None:
     root = Path("archive")
@@ -18,3 +26,13 @@ def test_canonical_run_file() -> None:
     path = canonical_run_file(root, when, "ce02", run_stamp)
 
     assert path == Path("archive/canonical/2026/04/17/ce02-20260417T123456Z.jsonl.zst")
+
+
+def test_derived_daily_layout_paths() -> None:
+    root = Path("archive")
+    when = datetime(2026, 4, 17, 12, 0, 0, tzinfo=timezone.utc)
+
+    assert derived_daily_dir(root, when) == Path("archive/derived/daily/2026/04/17")
+    assert derived_daily_jobs_file(root, when) == Path("archive/derived/daily/2026/04/17/jobs.jsonl.zst")
+    assert derived_daily_summary_path(root, when) == Path("archive/derived/daily/2026/04/17/summary.json")
+    assert derived_daily_duplicates_path(root, when) == Path("archive/derived/daily/2026/04/17/duplicates.json")

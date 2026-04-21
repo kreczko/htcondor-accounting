@@ -181,6 +181,82 @@ def test_extract_cli_arguments_override_config(monkeypatch, tmp_path: Path) -> N
     assert "match      = 10" in result.stdout
 
 
+def test_derive_daily_command_creates_outputs(tmp_path: Path) -> None:
+    day_dir = tmp_path / "archive" / "canonical" / "2026" / "04" / "17"
+    write_jsonl_zst(
+        day_dir / "ce01.jsonl.zst",
+        [
+            {
+                "schema_version": 1,
+                "record_type": "job",
+                "site_name": "UKI-SOUTHGRID-BRIS-HEP",
+                "source": {
+                    "system": "htcondor",
+                    "schedd": "lcgce02.phy.bris.ac.uk",
+                    "collector_host": None,
+                    "collected_at": "2026-04-17T12:00:00Z",
+                },
+                "job": {
+                    "global_job_id": "job-001",
+                    "routed_from_job_id": None,
+                    "owner": "alice",
+                    "local_user": "alice",
+                },
+                "usage": {
+                    "wall_seconds": 100,
+                    "cpu_user_seconds": 50,
+                    "cpu_sys_seconds": 10,
+                    "processors": 1,
+                    "memory_real_kb": 1000,
+                    "memory_virtual_kb": 2000,
+                },
+                "timing": {
+                    "queue_time": None,
+                    "start_time": 1776386139,
+                    "end_time": 1776428989,
+                    "status_time": 1776428989,
+                },
+                "identity": {
+                    "dn": "/C=UK/O=eScience/CN=alice",
+                    "fqan": "/atlas",
+                    "vo": "atlas",
+                    "vo_group": "/atlas",
+                    "vo_role": None,
+                    "auth_method": "scitoken",
+                    "token_issuer": "https://issuer.example",
+                    "token_subject": "subject",
+                    "token_groups": ["/atlas"],
+                },
+                "benchmark": {
+                    "benchmark_type": "hepscore23",
+                    "site_baseline_per_core": None,
+                    "node_per_core": None,
+                    "scale_factor": 2.0,
+                },
+                "execution": {
+                    "ce_host": "lcgce02.phy.bris.ac.uk",
+                    "ce_id": None,
+                    "execute_node": "slot1@node",
+                    "slot_name": "slot1@node",
+                },
+            }
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        ["derive-daily", "--day", "2026-04-17", "--output-root", str(tmp_path / "archive")],
+        terminal_width=160,
+    )
+
+    assert result.exit_code == 0
+    assert "Derive Daily" in result.stdout
+    assert "Unique records" in result.stdout
+    assert (tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "17" / "jobs.jsonl.zst").exists()
+    assert (tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "17" / "summary.json").exists()
+    assert (tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "17" / "duplicates.json").exists()
+
+
 def test_show_config_with_explicit_file(tmp_path: Path) -> None:
     config_path = tmp_path / "site.toml"
     config_path.write_text(

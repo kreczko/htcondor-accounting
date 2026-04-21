@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from htcondor_accounting.config.load import load_config, resolve_config_path
+from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, canonical_run_file
 
@@ -37,6 +38,10 @@ def _parse_day_or_timestamp(value: str, end_of_day: bool = False) -> datetime:
         dt = dt.replace(tzinfo=timezone.utc)
 
     return dt.astimezone(timezone.utc)
+
+
+def _parse_day(value: str) -> datetime:
+    return _parse_day_or_timestamp(value, end_of_day=False)
 
 
 def _source_name(schedd_name: str) -> str:
@@ -332,6 +337,42 @@ def inspect(
     else:
         assert table is not None
         console.print(table)
+
+
+@app.command("derive-daily")
+def derive_daily_command(
+    day: str = typer.Option(..., help="Day to derive, e.g. 2026-04-17"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for canonical and derived data"),
+) -> None:
+    """Derive deduplicated daily reporting data from canonical records."""
+    app_config = load_config(config)
+    resolved_output_root = output_root or app_config.storage.root
+    when = _parse_day(day)
+
+    input_paths = canonical_day_paths(resolved_output_root, when)
+    if not input_paths:
+        console.print(f"[yellow]No canonical files found for {day} under {resolved_output_root}[/yellow]")
+        raise typer.Exit(code=1)
+
+    result = derive_daily(resolved_output_root, when)
+
+    summary = Table(title="Daily derivation")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Day", result.day)
+    summary.add_row("Input files", str(len(result.input_paths)))
+    summary.add_row("Input records", str(result.input_records))
+    summary.add_row("Unique records", str(result.unique_records))
+    summary.add_row("Duplicates", str(result.duplicate_records))
+    summary.add_row("Jobs output", str(result.jobs_path))
+    summary.add_row("Summary output", str(result.summary_path))
+    summary.add_row("Duplicates output", str(result.duplicates_path))
+
+    console.print("[bold]Derive Daily[/bold]")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(summary)
 
 
 @app.command("show-config")
