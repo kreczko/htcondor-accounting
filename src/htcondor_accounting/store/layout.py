@@ -97,6 +97,26 @@ def derived_all_time_summary_path(root: Path) -> Path:
     return derived_all_time_dir(root) / "summary.json"
 
 
+def apel_staging_day_dir(root: Path, when: datetime) -> Path:
+    """Return the APEL staging daily directory path under the output root."""
+    return root / "apel" / "staging" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
+
+
+def apel_staging_message_path(root: Path, when: datetime, run_stamp: RunStamp, index: int) -> Path:
+    """Return a staged APEL message file path."""
+    return apel_staging_day_dir(root, when) / f"{run_stamp.as_filename_component()}-{index:04d}.msg"
+
+
+def apel_manifest_day_dir(root: Path, when: datetime) -> Path:
+    """Return the APEL export manifest daily directory path."""
+    return root / "apel" / "manifests" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
+
+
+def apel_manifest_path(root: Path, when: datetime, run_stamp: RunStamp) -> Path:
+    """Return the APEL export manifest JSON path."""
+    return apel_manifest_day_dir(root, when) / f"{run_stamp.as_filename_component()}.json"
+
+
 def manifest_day_dir(root: Path, when: datetime) -> Path:
     """
     Return the manifest daily directory path.

@@ -14,6 +14,7 @@ from rich.table import Table
 from htcondor_accounting.config.load import load_config, resolve_config_path
 from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
+from htcondor_accounting.export.apel_messages import export_apel_daily
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
 from htcondor_accounting.report.rollup import (
     RollupResult,
@@ -566,6 +567,35 @@ def derive_daily_command(
     console.print(summary)
 
 
+@app.command("export-apel-daily")
+def export_apel_daily_command(
+    day: str = typer.Option(..., help="Day to export, e.g. 2026-04-17"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived and APEL data"),
+) -> None:
+    """Export one day of derived jobs into staged APEL message files."""
+    app_config = load_config(config)
+    resolved_output_root = output_root or app_config.storage.root
+    when = _parse_day(day)
+    run_stamp = RunStamp.now()
+
+    result = export_apel_daily(resolved_output_root, when, app_config.apel, run_stamp)
+
+    summary = Table(title="APEL daily export")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Day", result.day)
+    summary.add_row("Jobs seen", str(result.jobs_seen))
+    summary.add_row("Messages written", str(result.messages_written))
+    summary.add_row("Total bytes", str(result.total_bytes))
+    summary.add_row("Manifest", str(result.manifest_path))
+
+    console.print("[bold]Export APEL Daily[/bold]")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(summary)
+
+
 @app.command("show-config")
 def show_config(
     config: Optional[Path] = typer.Option(None, help="Path to site config file"),
@@ -582,26 +612,6 @@ def show_config(
 def _iter_records(paths: Iterable[Path]) -> Iterable[dict[str, Any]]:
     for entry in paths:
         yield from read_jsonl_zst(entry)
-
-
-@app.command("export-apel")
-def export_apel(
-    start: str = typer.Option(..., help="Start date/time"),
-    end: str = typer.Option(..., help="End date/time"),
-    input_root: Path = typer.Option(Path("./archive"), help="Canonical archive root"),
-    output_dir: Path = typer.Option(
-        Path("/var/spool/apel/outgoing"),
-        help="Directory to write APEL outgoing messages",
-    ),
-    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
-) -> None:
-    """Export canonical records into APEL-compatible output."""
-    console.print("[bold]Export APEL[/bold]")
-    console.print(f"  start      = {start}")
-    console.print(f"  end        = {end}")
-    console.print(f"  input      = {input_root}")
-    console.print(f"  output     = {output_dir}")
-    console.print(f"  config     = {config}")
 
 
 def main() -> None:

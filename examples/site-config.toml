@@ -20,7 +20,17 @@ use_token_groups = true
 [apel]
 enabled = true
 ce_id = "lcgce02.phy.bris.ac.uk:9619/lcgce02.phy.bris.ac.uk-condor"
+submit_host = "lcgce02.phy.bris.ac.uk"
+machine_name = "lcgce02.phy.bris.ac.uk"
+queue_name = "condor"
+infrastructure_description = "APEL-HTCondor"
+infrastructure_type = "grid"
+service_level_type = "hepscore23"
+service_level_value = 20.0
+staging_dir = "apel/staging"
 outgoing_dir = "/var/spool/apel/outgoing"
+message_soft_limit_bytes = 800000
+message_hard_limit_bytes = 1000000
 
 [reporting]
 output_dir = "/shared/accounting-reports"

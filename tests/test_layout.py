@@ -3,6 +3,8 @@ from pathlib import Path
 
 from htcondor_accounting.store.layout import (
     RunStamp,
+    apel_manifest_path,
+    apel_staging_message_path,
     canonical_day_dir,
     canonical_run_file,
     derived_all_time_summary_path,
@@ -59,3 +61,12 @@ def test_rollup_layout_paths() -> None:
     assert derived_monthly_summary_path(root, 2026, 4) == Path("archive/derived/monthly/2026/04/summary.json")
     assert derived_yearly_summary_path(root, 2026) == Path("archive/derived/yearly/2026/summary.json")
     assert derived_all_time_summary_path(root) == Path("archive/derived/all-time/summary.json")
+
+
+def test_apel_layout_paths() -> None:
+    root = Path("archive")
+    when = datetime(2026, 4, 17, 12, 0, 0, tzinfo=timezone.utc)
+    run_stamp = RunStamp(datetime(2026, 4, 21, 12, 30, 38, tzinfo=timezone.utc))
+
+    assert apel_staging_message_path(root, when, run_stamp, 1) == Path("archive/apel/staging/2026/04/17/20260421T123038Z-0001.msg")
+    assert apel_manifest_path(root, when, run_stamp) == Path("archive/apel/manifests/2026/04/17/20260421T123038Z.json")
