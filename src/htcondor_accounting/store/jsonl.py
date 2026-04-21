@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping, Any
@@ -41,11 +42,11 @@ def read_jsonl_zst(path: Path) -> Iterator[dict[str, Any]]:
     """Read records from a compressed JSONL (.jsonl.zst) file."""
     decompressor = zstd.ZstdDecompressor()
 
-
     with path.open("rb") as raw_stream:
         with decompressor.stream_reader(raw_stream) as compressed_stream:
-            for raw_line in compressed_stream:
-                line = raw_line.decode("utf-8").strip()
-                if not line:
-                    continue
-                yield json.loads(line)
+            with io.TextIOWrapper(compressed_stream, encoding="utf-8") as text_stream:
+                for raw_line in text_stream:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    yield json.loads(line)

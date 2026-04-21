@@ -1,18 +1,16 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Iterable, List, Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from htcondor_accounting.extract.htcondor import (
-    HistoryQuery,
-    extract_many_canonical_records,
-)
-from htcondor_accounting.store.jsonl import write_jsonl_zst
+from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, canonical_run_file
 
 app = typer.Typer(help="HTCondor accounting extraction, normalization, and APEL export utilities.")
@@ -46,6 +44,153 @@ def _source_name(schedd_name: str) -> str:
     return schedd_name.split(".")[0]
 
 
+def _iter_inspect_paths(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    if path.is_dir():
+        return sorted(child for child in path.rglob("*.jsonl.zst") if child.is_file())
+    raise typer.BadParameter(f"Path does not exist: {path}")
+
+
+def _field(record: dict[str, Any], *keys: str) -> Any:
+    current: Any = record
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+class InspectVerbosity(str, Enum):
+    least = "least"
+    medium = "medium"
+    full = "full"
+
+
+def _format_unix_timestamp(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        timestamp = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _format_wallclock(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        total_seconds = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _format_scale_factor(value: Any) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.3f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _parse_global_job_id(value: Any) -> dict[str, Any]:
+    text = str(value or "")
+    parts = text.split("#")
+
+    parsed: dict[str, Any] = {
+        "raw": text or "-",
+        "schedd": "-",
+        "job_id": "-",
+        "timestamp": None,
+        "date": "-",
+    }
+
+    if len(parts) >= 1 and parts[0]:
+        parsed["schedd"] = parts[0]
+    if len(parts) >= 2 and parts[1]:
+        parsed["job_id"] = parts[1]
+    if len(parts) >= 3 and parts[2]:
+        try:
+            timestamp = int(parts[2])
+        except ValueError:
+            parsed["timestamp"] = parts[2]
+            parsed["date"] = parts[2]
+        else:
+            parsed["timestamp"] = timestamp
+            parsed["date"] = _format_unix_timestamp(timestamp)
+
+    return parsed
+
+
+def _identity_display(record: dict[str, Any]) -> str:
+    dn = _field(record, "identity", "dn")
+    if dn:
+        return str(dn)
+
+    issuer = _field(record, "identity", "token_issuer")
+    subject = _field(record, "identity", "token_subject")
+    if issuer or subject:
+        return f"issuer={issuer or '-'} subject={subject or '-'}"
+
+    return "-"
+
+
+def _full_record(record: dict[str, Any]) -> dict[str, Any]:
+    enriched = json.loads(json.dumps(record))
+    enriched["inspect"] = {
+        "global_job_id": _parse_global_job_id(_field(record, "job", "global_job_id")),
+        "identity_display": _identity_display(record),
+    }
+    return enriched
+
+
+def _inspect_table(verbosity: InspectVerbosity) -> Table:
+    table = Table(title="Canonical jobs")
+    table.add_column("Schedd#jobID")
+    table.add_column("Start Date (UTC)")
+    table.add_column("End Date (UTC)")
+    table.add_column("User")
+    table.add_column("VO")
+    table.add_column("Scale Factor", justify="right")
+
+    if verbosity == InspectVerbosity.medium:
+        table.add_column("Wallclock", justify="right")
+        table.add_column("Identity")
+
+    return table
+
+
+def _inspect_row(record: dict[str, Any], verbosity: InspectVerbosity) -> list[str]:
+    parsed_job = _parse_global_job_id(_field(record, "job", "global_job_id"))
+    schedd = str(_field(record, "source", "schedd") or parsed_job["schedd"])
+    if parsed_job["job_id"]:
+        schedd += '#' + str(parsed_job["job_id"])
+    row = [
+        schedd,
+        _format_unix_timestamp(_field(record, "timing", "start_time") or parsed_job["timestamp"]),
+        _format_unix_timestamp(_field(record, "timing", "end_time")),
+        str(_field(record, "job", "local_user") or _field(record, "job", "owner") or "-"),
+        str(_field(record, "identity", "vo") or "-"),
+        _format_scale_factor(_field(record, "benchmark", "scale_factor")),
+    ]
+
+    if verbosity == InspectVerbosity.medium:
+        row.extend(
+            [
+                _format_wallclock(_field(record, "usage", "wall_seconds")),
+                _identity_display(record),
+            ]
+        )
+
+    return row
+
+
 @app.command()
 def extract(
     start: str = typer.Option(..., help="Start date/time, e.g. 2026-04-17 or 2026-04-17T00:00:00"),
@@ -66,6 +211,11 @@ def extract(
     match: int = typer.Option(100, help="Maximum number of history ads to fetch per schedd"),
 ) -> None:
     """Extract HTCondor history into canonical records."""
+    from htcondor_accounting.extract.htcondor import (
+        HistoryQuery,
+        extract_many_canonical_records,
+    )
+
     start_dt = _parse_day_or_timestamp(start, end_of_day=False)
     end_dt = _parse_day_or_timestamp(end, end_of_day=True)
 
@@ -124,10 +274,57 @@ def extract(
 @app.command()
 def inspect(
     path: Path = typer.Argument(..., help="Path to a canonical record file or directory"),
+    limit: int = typer.Option(20, min=1, help="Maximum number of jobs to show"),
+    verbosity: InspectVerbosity = typer.Option(
+        InspectVerbosity.least,
+        "--verbosity",
+        "-v",
+        case_sensitive=False,
+        help="Output detail level: least, medium, or full",
+    ),
 ) -> None:
     """Inspect canonical accounting data."""
+    paths = _iter_inspect_paths(path)
+    if not paths:
+        console.print(f"[yellow]No .jsonl.zst files found under {path}[/yellow]")
+        raise typer.Exit(code=1)
+
+    rows_shown = 0
+    total_records = 0
+    table = _inspect_table(verbosity) if verbosity != InspectVerbosity.full else None
+    full_records: list[dict[str, Any]] = []
+
+    for record in _iter_records(paths):
+        total_records += 1
+        if rows_shown >= limit:
+            continue
+
+        if verbosity == InspectVerbosity.full:
+            full_records.append(_full_record(record))
+        else:
+            assert table is not None
+            table.add_row(*_inspect_row(record, verbosity))
+        rows_shown += 1
+
     console.print("[bold]Inspect[/bold]")
-    console.print(f"  path = {path}")
+    console.print(f"  path         = {path}")
+    console.print(f"  files        = {len(paths)}")
+    console.print(f"  total jobs   = {total_records}")
+    console.print(f"  showing jobs = {min(total_records, limit)}")
+    console.print(f"  verbosity    = {verbosity.value}")
+
+    if verbosity == InspectVerbosity.full:
+        for index, record in enumerate(full_records, start=1):
+            console.print(f"[bold]Job {index}[/bold]")
+            console.print_json(json.dumps(record, sort_keys=True))
+    else:
+        assert table is not None
+        console.print(table)
+
+
+def _iter_records(paths: Iterable[Path]) -> Iterable[dict[str, Any]]:
+    for entry in paths:
+        yield from read_jsonl_zst(entry)
 
 
 @app.command("export-apel")
