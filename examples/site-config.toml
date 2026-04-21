@@ -3,7 +3,7 @@ name = "UKI-SOUTHGRID-BRIS-HEP"
 timezone = "Europe/London"
 
 [storage]
-root = "/srv/htcondor-accounting/archive"
+root = "./archive"
 
 [benchmark]
 type = "hepscore23"
@@ -11,7 +11,7 @@ baseline_per_core = 20.0
 
 [extract]
 default_match = 100
-default_schedds = ["lcgce02.phy.bris.ac.uk", "hm01.dice.priv"]
+default_schedds = ["lcgce02.phy.bris.ac.uk"]
 
 [identity]
 prefer_x509_fqan = true

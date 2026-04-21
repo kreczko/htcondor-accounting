@@ -22,3 +22,24 @@ hello = "htcondor-accounting hello"
 test = "python -m pytest"
 lint = "ruff check ."
 typecheck = "mypy src"
+
+clean-archive = "rm -rf archive"
+show-config = "htcondor-accounting show-config"
+
+extract = "htcondor-accounting extract --start 2026-04-17 --end 2026-04-17 --output-root ./archive"
+inspect = "htcondor-accounting inspect archive/canonical/2026/04/17 --output-root ./archive"
+derive-daily = "htcondor-accounting derive-daily --day 2026-04-17 --output-root ./archive"
+derive-rollups = "htcondor-accounting derive-rollups --output-root ./archive"
+
+snapshot = "htcondor-accounting snapshot-history --start 2026-04-17 --end 2026-04-17 --output-root ./archive"
+export-apel = "htcondor-accounting export-apel-daily --day 2026-04-17 --output-root ./archive"
+push-apel = "htcondor-accounting push-apel-daily --day 2026-04-17 --output-root ./archive"
+
+pipeline = { depends-on = [
+    "clean-archive",
+    "extract",
+    "derive-daily",
+    "derive-rollups",
+] }
+
+apel = { depends-on = ["export-apel", "push-apel"] }

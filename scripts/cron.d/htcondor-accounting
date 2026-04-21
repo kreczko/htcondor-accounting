@@ -1,0 +1,6 @@
+# Run extraction and derivation 4 times a day
+5 */6 * * * condor /path/to/htcondor-accounting/scripts/run_extract.sh /srv/htcondor-accounting >> /var/log/htcondor-accounting-extract.log 2>&1
+20 */6 * * * condor /path/to/htcondor-accounting/scripts/run_daily.sh /srv/htcondor-accounting >> /var/log/htcondor-accounting-daily.log 2>&1
+
+# Push APEL once per day after daily derivation
+45 1 * * * condor /path/to/htcondor-accounting/scripts/run_apel.sh /srv/htcondor-accounting $(date -u -d '1 day ago' +\%F) >> /var/log/htcondor-accounting-apel.log 2>&1
