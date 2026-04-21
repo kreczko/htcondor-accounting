@@ -152,7 +152,9 @@ def canonical_from_ad(
         ),
         identity=resolve_identity(ad),
         benchmark=BenchmarkInfo(
-            benchmark_type="hepscore23" if ad.get("MachineAttrACCOUNTING_SCALE_FACTOR0") is not None else None,
+            benchmark_type="hepscore23"
+            if ad.get("MachineAttrACCOUNTING_SCALE_FACTOR0") is not None
+            else None,
             scale_factor=ad_float(ad, "MachineAttrACCOUNTING_SCALE_FACTOR0"),
         ),
         execution=ExecutionInfo(
@@ -230,3 +232,38 @@ def extract_canonical_records(
         records.append(canonical_from_ad(ad, site_name=site_name, schedd_name=schedd_name))
 
     return records
+
+
+def extract_many_canonical_records(
+    site_name: str,
+    schedd_names: list[str] | None,
+    base_query: HistoryQuery,
+) -> dict[str, list[CanonicalJobRecord]]:
+    """
+    Extract canonical records from one or more schedds.
+
+    Returns a mapping:
+        schedd_name -> list[CanonicalJobRecord]
+    """
+    results: dict[str, list[CanonicalJobRecord]] = {}
+
+    if not schedd_names:
+        local_query = HistoryQuery(
+            schedd_name=None,
+            since=base_query.since,
+            match=base_query.match,
+            constraint=base_query.constraint,
+        )
+        results["local"] = extract_canonical_records(site_name=site_name, query=local_query)
+        return results
+
+    for schedd_name in schedd_names:
+        query = HistoryQuery(
+            schedd_name=schedd_name,
+            since=base_query.since,
+            match=base_query.match,
+            constraint=base_query.constraint,
+        )
+        results[schedd_name] = extract_canonical_records(site_name=site_name, query=query)
+
+    return results

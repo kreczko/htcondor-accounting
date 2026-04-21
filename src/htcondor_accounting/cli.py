@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
-from htcondor_accounting.extract.htcondor import HistoryQuery, extract_canonical_records
+from htcondor_accounting.extract.htcondor import (
+    HistoryQuery,
+    extract_many_canonical_records,
+)
 from htcondor_accounting.store.jsonl import write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, canonical_run_file
 
@@ -36,11 +40,21 @@ def _parse_day_or_timestamp(value: str, end_of_day: bool = False) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _source_name(schedd_name: str) -> str:
+    if schedd_name == "local":
+        return "local"
+    return schedd_name.split(".")[0]
+
+
 @app.command()
 def extract(
     start: str = typer.Option(..., help="Start date/time, e.g. 2026-04-17 or 2026-04-17T00:00:00"),
     end: str = typer.Option(..., help="End date/time, e.g. 2026-04-17 or 2026-04-17T23:59:59"),
-    schedd: Optional[str] = typer.Option(None, help="Schedd hostname to query"),
+    schedd: Optional[List[str]] = typer.Option(
+        None,
+        "--schedd",
+        help="Schedd hostname to query; may be given multiple times",
+    ),
     output_root: Path = typer.Option(
         Path("./archive"),
         help="Root directory for canonical output",
@@ -49,7 +63,7 @@ def extract(
         "UKI-SOUTHGRID-BRIS-HEP",
         help="Site name to embed in canonical records",
     ),
-    match: int = typer.Option(100, help="Maximum number of history ads to fetch"),
+    match: int = typer.Option(100, help="Maximum number of history ads to fetch per schedd"),
 ) -> None:
     """Extract HTCondor history into canonical records."""
     start_dt = _parse_day_or_timestamp(start, end_of_day=False)
@@ -61,30 +75,50 @@ def extract(
         f"EnteredCurrentStatus <= {int(end_dt.timestamp())}"
     )
 
-    query = HistoryQuery(
-        schedd_name=schedd,
+    base_query = HistoryQuery(
+        schedd_name=None,
         match=match,
         constraint=constraint,
     )
-    records = extract_canonical_records(site_name=site_name, query=query)
 
-    source_name = (schedd or "local").split(".")[0]
     run_stamp = RunStamp.now()
-    output_path = canonical_run_file(
-        output_root,
-        when=start_dt,
-        source=source_name,
-        run_stamp=run_stamp,
+    records_by_schedd = extract_many_canonical_records(
+        site_name=site_name,
+        schedd_names=list(schedd) if schedd else None,
+        base_query=base_query,
     )
-    written = write_jsonl_zst(output_path, records)
+
+    summary = Table(title="Extraction summary")
+    summary.add_column("Schedd")
+    summary.add_column("Output file")
+    summary.add_column("Records", justify="right")
+
+    total_records = 0
+
+    for schedd_name, records in records_by_schedd.items():
+        source_name = _source_name(schedd_name)
+        output_path = canonical_run_file(
+            output_root,
+            when=start_dt,
+            source=source_name,
+            run_stamp=run_stamp,
+        )
+        written = write_jsonl_zst(output_path, records)
+        total_records += written
+
+        summary.add_row(
+            schedd_name,
+            str(output_path),
+            str(written),
+        )
 
     console.print("[bold]Extract[/bold]")
     console.print(f"  start      = {start_dt.isoformat()}")
     console.print(f"  end        = {end_dt.isoformat()}")
-    console.print(f"  schedd     = {schedd or 'local'}")
     console.print(f"  constraint = {constraint}")
-    console.print(f"  output     = {output_path}")
-    console.print(f"  records    = {written}")
+    console.print(f"  site       = {site_name}")
+    console.print(f"  total      = {total_records}")
+    console.print(summary)
 
 
 @app.command()
