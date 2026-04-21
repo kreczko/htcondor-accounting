@@ -5,10 +5,14 @@ from htcondor_accounting.store.layout import (
     RunStamp,
     canonical_day_dir,
     canonical_run_file,
+    derived_all_time_summary_path,
     derived_daily_dir,
     derived_daily_duplicates_path,
     derived_daily_jobs_file,
     derived_daily_summary_path,
+    derived_monthly_summary_path,
+    derived_weekly_summary_path,
+    derived_yearly_summary_path,
     manifest_day_dir,
     manifest_file,
 )
@@ -46,3 +50,12 @@ def test_manifest_layout_paths() -> None:
 
     assert manifest_day_dir(root, run_stamp.timestamp) == Path("archive/manifests/2026/04/21")
     assert manifest_file(root, run_stamp) == Path("archive/manifests/2026/04/21/20260421T123038Z.json")
+
+
+def test_rollup_layout_paths() -> None:
+    root = Path("archive")
+
+    assert derived_weekly_summary_path(root, 2026, 16) == Path("archive/derived/weekly/2026/week-16/summary.json")
+    assert derived_monthly_summary_path(root, 2026, 4) == Path("archive/derived/monthly/2026/04/summary.json")
+    assert derived_yearly_summary_path(root, 2026) == Path("archive/derived/yearly/2026/summary.json")
+    assert derived_all_time_summary_path(root) == Path("archive/derived/all-time/summary.json")

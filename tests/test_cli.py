@@ -368,6 +368,72 @@ def test_derive_daily_command_creates_outputs(tmp_path: Path) -> None:
     assert (tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "17" / "duplicates.json").exists()
 
 
+def test_derive_rollups_command_creates_higher_level_summaries(tmp_path: Path) -> None:
+    first = tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "13" / "summary.json"
+    first.parent.mkdir(parents=True, exist_ok=True)
+    first.write_text(
+        json.dumps(
+            {
+                "day": "2026-04-13",
+                "input_files": 1,
+                "input_records": 2,
+                "unique_records": 2,
+                "duplicate_records": 0,
+                "users": 1,
+                "vos": 1,
+                "wall_seconds": 10,
+                "cpu_user_seconds": 5,
+                "cpu_sys_seconds": 1,
+                "cpu_total_seconds": 6,
+                "scaled_wall_seconds": 10.0,
+                "scaled_cpu_seconds": 6.0,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    second = tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "14" / "summary.json"
+    second.parent.mkdir(parents=True, exist_ok=True)
+    second.write_text(
+        json.dumps(
+            {
+                "day": "2026-04-14",
+                "input_files": 1,
+                "input_records": 3,
+                "unique_records": 3,
+                "duplicate_records": 0,
+                "users": 2,
+                "vos": 2,
+                "wall_seconds": 20,
+                "cpu_user_seconds": 7,
+                "cpu_sys_seconds": 3,
+                "cpu_total_seconds": 10,
+                "scaled_wall_seconds": 20.0,
+                "scaled_cpu_seconds": 10.0,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["derive-rollups", "--output-root", str(tmp_path / "archive")],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert "Derive Rollups" in result.stdout
+    assert (tmp_path / "archive" / "derived" / "weekly" / "2026" / "week-16" / "summary.json").exists()
+    assert (tmp_path / "archive" / "derived" / "monthly" / "2026" / "04" / "summary.json").exists()
+    assert (tmp_path / "archive" / "derived" / "yearly" / "2026" / "summary.json").exists()
+    assert (tmp_path / "archive" / "derived" / "all-time" / "summary.json").exists()
+
+
 def test_show_config_with_explicit_file(tmp_path: Path) -> None:
     config_path = tmp_path / "site.toml"
     config_path.write_text(

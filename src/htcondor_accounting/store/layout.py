@@ -57,6 +57,46 @@ def derived_daily_duplicates_path(root: Path, when: datetime) -> Path:
     return derived_daily_dir(root, when) / "duplicates.json"
 
 
+def derived_weekly_dir(root: Path, year: int, week: int) -> Path:
+    """Return the derived weekly directory path."""
+    return root / "derived" / "weekly" / f"{year:04d}" / f"week-{week:02d}"
+
+
+def derived_weekly_summary_path(root: Path, year: int, week: int) -> Path:
+    """Return the derived weekly summary JSON path."""
+    return derived_weekly_dir(root, year, week) / "summary.json"
+
+
+def derived_monthly_dir(root: Path, year: int, month: int) -> Path:
+    """Return the derived monthly directory path."""
+    return root / "derived" / "monthly" / f"{year:04d}" / f"{month:02d}"
+
+
+def derived_monthly_summary_path(root: Path, year: int, month: int) -> Path:
+    """Return the derived monthly summary JSON path."""
+    return derived_monthly_dir(root, year, month) / "summary.json"
+
+
+def derived_yearly_dir(root: Path, year: int) -> Path:
+    """Return the derived yearly directory path."""
+    return root / "derived" / "yearly" / f"{year:04d}"
+
+
+def derived_yearly_summary_path(root: Path, year: int) -> Path:
+    """Return the derived yearly summary JSON path."""
+    return derived_yearly_dir(root, year) / "summary.json"
+
+
+def derived_all_time_dir(root: Path) -> Path:
+    """Return the derived all-time directory path."""
+    return root / "derived" / "all-time"
+
+
+def derived_all_time_summary_path(root: Path) -> Path:
+    """Return the derived all-time summary JSON path."""
+    return derived_all_time_dir(root) / "summary.json"
+
+
 def manifest_day_dir(root: Path, when: datetime) -> Path:
     """
     Return the manifest daily directory path.

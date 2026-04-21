@@ -15,6 +15,14 @@ from htcondor_accounting.config.load import load_config, resolve_config_path
 from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
+from htcondor_accounting.report.rollup import (
+    RollupResult,
+    derive_all_rollups,
+    derive_all_time,
+    derive_monthly,
+    derive_weekly,
+    derive_yearly,
+)
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, canonical_run_file, ensure_parent_dir, manifest_file
 from htcondor_accounting.version import __version__
@@ -78,6 +86,46 @@ def bucket_records_by_day(records: Iterable[CanonicalJobRecord]) -> dict[datetim
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     ensure_parent_dir(path)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _resolved_output_root(config: Optional[Path], output_root: Optional[Path]) -> tuple[Path, Optional[Path]]:
+    app_config = load_config(config)
+    return output_root or app_config.storage.root, resolve_config_path(config)
+
+
+def _rollup_table(title: str, result: RollupResult) -> Table:
+    table = Table(title=title)
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Period", result.period)
+    table.add_row("Daily summaries", str(result.summary["days_included"]))
+    table.add_row("Output", str(result.output_path))
+    table.add_row("Unique records", str(result.summary["unique_records"]))
+    table.add_row("Wall seconds", str(result.summary["wall_seconds"]))
+    table.add_row("Scaled CPU seconds", str(result.summary["scaled_cpu_seconds"]))
+    return table
+
+
+def _rollup_results_table(title: str, results: list[RollupResult]) -> Table:
+    table = Table(title=title)
+    table.add_column("Period Type")
+    table.add_column("Period")
+    table.add_column("Daily summaries", justify="right")
+    table.add_column("Output")
+    table.add_column("Unique records", justify="right")
+    table.add_column("Wall seconds", justify="right")
+    table.add_column("Scaled CPU seconds", justify="right")
+    for result in results:
+        table.add_row(
+            result.period_type,
+            result.period,
+            str(result.summary["days_included"]),
+            str(result.output_path),
+            str(result.summary["unique_records"]),
+            str(result.summary["wall_seconds"]),
+            str(result.summary["scaled_cpu_seconds"]),
+        )
+    return table
 
 
 def _iter_inspect_paths(path: Path) -> list[Path]:
@@ -405,6 +453,81 @@ def inspect(
     else:
         assert table is not None
         console.print(table)
+
+
+@app.command("derive-weekly")
+def derive_weekly_command(
+    year: int = typer.Option(..., help="ISO year, e.g. 2026"),
+    week: int = typer.Option(..., help="ISO week number, e.g. 16"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived data"),
+) -> None:
+    """Derive one weekly rollup from daily summaries."""
+    resolved_output_root, resolved_config_path = _resolved_output_root(config, output_root)
+    result = derive_weekly(resolved_output_root, year=year, week=week)
+    console.print("[bold]Derive Weekly[/bold]")
+    console.print(f"  config     = {resolved_config_path or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(_rollup_table("Weekly rollup", result))
+
+
+@app.command("derive-monthly")
+def derive_monthly_command(
+    year: int = typer.Option(..., help="Year, e.g. 2026"),
+    month: int = typer.Option(..., help="Month number, e.g. 4"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived data"),
+) -> None:
+    """Derive one monthly rollup from daily summaries."""
+    resolved_output_root, resolved_config_path = _resolved_output_root(config, output_root)
+    result = derive_monthly(resolved_output_root, year=year, month=month)
+    console.print("[bold]Derive Monthly[/bold]")
+    console.print(f"  config     = {resolved_config_path or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(_rollup_table("Monthly rollup", result))
+
+
+@app.command("derive-yearly")
+def derive_yearly_command(
+    year: int = typer.Option(..., help="Year, e.g. 2026"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived data"),
+) -> None:
+    """Derive one yearly rollup from daily summaries."""
+    resolved_output_root, resolved_config_path = _resolved_output_root(config, output_root)
+    result = derive_yearly(resolved_output_root, year=year)
+    console.print("[bold]Derive Yearly[/bold]")
+    console.print(f"  config     = {resolved_config_path or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(_rollup_table("Yearly rollup", result))
+
+
+@app.command("derive-all-time")
+def derive_all_time_command(
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived data"),
+) -> None:
+    """Derive the all-time rollup from daily summaries."""
+    resolved_output_root, resolved_config_path = _resolved_output_root(config, output_root)
+    result = derive_all_time(resolved_output_root)
+    console.print("[bold]Derive All-Time[/bold]")
+    console.print(f"  config     = {resolved_config_path or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(_rollup_table("All-time rollup", result))
+
+
+@app.command("derive-rollups")
+def derive_rollups_command(
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived data"),
+) -> None:
+    """Regenerate all weekly, monthly, yearly, and all-time rollups from daily summaries."""
+    resolved_output_root, resolved_config_path = _resolved_output_root(config, output_root)
+    results = derive_all_rollups(resolved_output_root)
+    console.print("[bold]Derive Rollups[/bold]")
+    console.print(f"  config     = {resolved_config_path or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(_rollup_results_table("Rollup derivations", results))
 
 
 @app.command("derive-daily")
