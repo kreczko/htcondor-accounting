@@ -196,26 +196,33 @@ def _inspect_row(record: dict[str, Any], verbosity: InspectVerbosity) -> list[st
 def extract(
     start: str = typer.Option(..., help="Start date/time, e.g. 2026-04-17 or 2026-04-17T00:00:00"),
     end: str = typer.Option(..., help="End date/time, e.g. 2026-04-17 or 2026-04-17T23:59:59"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
     schedd: Optional[List[str]] = typer.Option(
         None,
         "--schedd",
         help="Schedd hostname to query; may be given multiple times",
     ),
-    output_root: Path = typer.Option(
-        Path("./archive"),
+    output_root: Optional[Path] = typer.Option(
+        None,
         help="Root directory for canonical output",
     ),
-    site_name: str = typer.Option(
-        "UKI-SOUTHGRID-BRIS-HEP",
+    site_name: Optional[str] = typer.Option(
+        None,
         help="Site name to embed in canonical records",
     ),
-    match: int = typer.Option(100, help="Maximum number of history ads to fetch per schedd"),
+    match: Optional[int] = typer.Option(None, help="Maximum number of history ads to fetch per schedd"),
 ) -> None:
     """Extract HTCondor history into canonical records."""
     from htcondor_accounting.extract.htcondor import (
         HistoryQuery,
         extract_many_canonical_records,
     )
+
+    app_config = load_config(config)
+    resolved_schedds = list(schedd) if schedd is not None else list(app_config.extract.default_schedds)
+    resolved_output_root = output_root or app_config.storage.root
+    resolved_site_name = site_name or app_config.site.name
+    resolved_match = match if match is not None else app_config.extract.default_match
 
     start_dt = _parse_day_or_timestamp(start, end_of_day=False)
     end_dt = _parse_day_or_timestamp(end, end_of_day=True)
@@ -228,14 +235,14 @@ def extract(
 
     base_query = HistoryQuery(
         schedd_name=None,
-        match=match,
+        match=resolved_match,
         constraint=constraint,
     )
 
     run_stamp = RunStamp.now()
     records_by_schedd = extract_many_canonical_records(
-        site_name=site_name,
-        schedd_names=list(schedd) if schedd else None,
+        site_name=resolved_site_name,
+        schedd_names=resolved_schedds or None,
         base_query=base_query,
     )
 
@@ -249,7 +256,7 @@ def extract(
     for schedd_name, records in records_by_schedd.items():
         source_name = _source_name(schedd_name)
         output_path = canonical_run_file(
-            output_root,
+            resolved_output_root,
             when=start_dt,
             source=source_name,
             run_stamp=run_stamp,
@@ -267,7 +274,11 @@ def extract(
     console.print(f"  start      = {start_dt.isoformat()}")
     console.print(f"  end        = {end_dt.isoformat()}")
     console.print(f"  constraint = {constraint}")
-    console.print(f"  site       = {site_name}")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  site       = {resolved_site_name}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(f"  schedds    = {resolved_schedds or ['local']}")
+    console.print(f"  match      = {resolved_match}")
     console.print(f"  total      = {total_records}")
     console.print(summary)
 
