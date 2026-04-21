@@ -20,7 +20,7 @@ class BenchmarkConfig(BaseModel):
 
 
 class ExtractConfig(BaseModel):
-    default_match: int = 100
+    default_match: int | None = None
     default_schedds: list[str] = Field(default_factory=list)
 
 

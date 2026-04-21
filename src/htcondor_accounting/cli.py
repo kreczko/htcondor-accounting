@@ -356,7 +356,7 @@ def extract(
         None,
         help="Site name to embed in canonical records",
     ),
-    match: Optional[int] = typer.Option(None, help="Maximum number of history ads to fetch per schedd"),
+    match: Optional[int] = typer.Option(None, help="Maximum number of history ads to fetch per schedd; omit for unlimited"),
 ) -> None:
     """Extract HTCondor history into canonical records."""
     from htcondor_accounting.extract.htcondor import (

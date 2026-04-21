@@ -20,7 +20,7 @@ class ExtractManifest(BaseModel):
     start: str
     end: str
     constraint: str
-    match: int
+    match: int | None
     schedds: list[str] = Field(default_factory=list)
     output_root: str
     files_written: list[ExtractManifestFileEntry] = Field(default_factory=list)

@@ -23,7 +23,7 @@ from htcondor_accounting.models.canonical import (
 class HistoryQuery:
     schedd_name: str | None = None
     since: str | int | None = None
-    match: int = 100
+    match: int | None = None
     constraint: str = "JobStatus == 4"
 
 
@@ -219,12 +219,15 @@ def fetch_history_ads(query: HistoryQuery) -> list[dict[str, Any]]:
         "LastJobRouterName",
     ]
 
-    ads = schedd.history(
-        constraint=query.constraint,
-        projection=projection,
-        match=query.match,
-        since=query.since,
-    )
+    history_kwargs: dict[str, Any] = {
+        "constraint": query.constraint,
+        "projection": projection,
+        "since": query.since,
+    }
+    if query.match is not None:
+        history_kwargs["match"] = query.match
+
+    ads = schedd.history(**history_kwargs)
 
     result: list[dict[str, Any]] = []
     for ad in ads:
