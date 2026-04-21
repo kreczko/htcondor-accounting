@@ -1,0 +1,27 @@
+[site]
+name = "UKI-SOUTHGRID-BRIS-HEP"
+timezone = "Europe/London"
+
+[storage]
+root = "/srv/htcondor-accounting/archive"
+
+[benchmark]
+type = "hepscore23"
+baseline_per_core = 20.0
+
+[extract]
+default_match = 100
+default_schedds = ["lcgce02.phy.bris.ac.uk", "hm01.dice.priv"]
+
+[identity]
+prefer_x509_fqan = true
+use_token_groups = true
+
+[apel]
+enabled = true
+ce_id = "lcgce02.phy.bris.ac.uk:9619/lcgce02.phy.bris.ac.uk-condor"
+outgoing_dir = "/var/spool/apel/outgoing"
+
+[reporting]
+output_dir = "/shared/accounting-reports"
+publish_html = true
