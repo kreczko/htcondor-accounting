@@ -642,9 +642,9 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     )
     html = (report_dir / "index.html").read_text(encoding="utf-8")
     assert "Accounting Groups" in html
-    assert "href='users.csv'" in html
-    assert "href='vos.csv'" in html
-    assert "href='accounting_groups.csv'" in html
+    assert 'href="users.csv"' in html or "href='users.csv'" in html
+    assert 'href="vos.csv"' in html or "href='vos.csv'" in html
+    assert 'href="accounting_groups.csv"' in html or "href='accounting_groups.csv'" in html
     assert "Wall h (scaled)" in html
 
 

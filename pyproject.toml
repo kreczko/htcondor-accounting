@@ -15,6 +15,7 @@ requires-python = ">=3.10"
 
 dependencies = [
     "htcondor",
+    "jinja2",
     "pydantic",
     "rich",
     "typer",
@@ -33,6 +34,9 @@ htcondor-accounting = "htcondor_accounting.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+htcondor_accounting = ["templates/*.html"]
 
 [tool.ruff]
 line-length = 100

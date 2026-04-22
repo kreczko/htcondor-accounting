@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>
+    body { font-family: sans-serif; margin: 1.5rem; color: #1f2937; }
+    h1 { margin-bottom: 0.5rem; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+    .summary-item { border: 1px solid #d1d5db; padding: 0.5rem 0.6rem; border-radius: 4px; background: #f9fafb; }
+    .summary-label { display: block; font-size: 0.75rem; color: #4b5563; }
+    .summary-value { display: block; font-weight: 700; }
+    .note { margin: 0 0 1rem 0; padding: 0.6rem 0.75rem; background: #eff6ff; border-left: 3px solid #60a5fa; font-size: 0.9rem; }
+    .report-section { margin-bottom: 1.25rem; }
+    .section-header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.35rem; }
+    .section-header h2 { margin: 0; font-size: 1rem; }
+    .section-header a { font-size: 0.85rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.87rem; }
+    th, td { border: 1px solid #d1d5db; padding: 0.28rem 0.4rem; text-align: left; white-space: nowrap; }
+    th { background: #f3f4f6; }
+    tbody tr:nth-child(even) { background: #fafafa; }
+  </style>
+</head>
+<body>
+  {% block content %}{% endblock %}
+</body>
+</html>

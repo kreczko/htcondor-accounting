@@ -90,6 +90,7 @@ The monthly CSV set currently includes:
 - `accounting_groups.csv` for internal accounting-group cross-checking
 
 The monthly `index.html` page links to those CSVs with relative paths and presents a compact human-readable view using hours and GB for display.
+It is rendered from Jinja templates in `src/htcondor_accounting/templates/`, which keeps the current one-page monthly layout reusable for later per-schedd reporting work.
 
 ## Cron Example
 

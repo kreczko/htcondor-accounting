@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from html import escape
+from functools import lru_cache
+from typing import Any
+
+from jinja2 import Environment, PackageLoader, select_autoescape
 
 from htcondor_accounting.models.reporting import MonthlyReportSummary, UsageGroupRow
 
@@ -35,75 +38,46 @@ def format_scaled_pair(raw_seconds: int | float | None, scaled_seconds: int | fl
     return f"{raw} ({scaled})"
 
 
-def _summary_item(label: str, value: str) -> str:
-    return f"<div class='summary-item'><span class='summary-label'>{escape(label)}</span><span class='summary-value'>{escape(value)}</span></div>"
+def _build_rows(rows: list[UsageGroupRow], kind: str) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for row in rows:
+        base = {
+            "jobs": str(row.jobs),
+            "wall_hours_display": format_scaled_pair(row.wall_seconds, row.scaled_wall_seconds),
+            "cpu_hours_display": format_scaled_pair(row.cpu_total_seconds, row.scaled_cpu_seconds),
+            "avg_processors_display": format_number(row.avg_processors),
+            "max_processors_display": str(row.max_processors),
+            "max_memory_gb_display": format_gb(row.memory_real_kb_max),
+        }
+        if kind == "users":
+            items.append(
+                {
+                    "user": row.group_key,
+                    "vo": row.vo or "-",
+                    **base,
+                }
+            )
+        elif kind == "vos":
+            items.append(
+                {
+                    "vo": row.group_key,
+                    "users": str(row.users or 0),
+                    **base,
+                }
+            )
+        else:
+            items.append(
+                {
+                    "accounting_group": row.group_key,
+                    "vo": row.vo or "-",
+                    "users": str(row.users or 0),
+                    **base,
+                }
+            )
+    return items
 
 
-def _cell(value: str) -> str:
-    return f"<td>{escape(value)}</td>"
-
-
-def _render_table_section(title: str, csv_name: str, headers: list[str], rows: list[list[str]]) -> str:
-    header_html = "".join(f"<th>{escape(header)}</th>" for header in headers)
-    body_html = "".join("<tr>" + "".join(_cell(value) for value in row) + "</tr>" for row in rows)
-    return (
-        "<section class='report-section'>"
-        f"<div class='section-header'><h2>{escape(title)}</h2><a href='{escape(csv_name)}'>Download CSV</a></div>"
-        f"<table><thead><tr>{header_html}</tr></thead><tbody>{body_html}</tbody></table>"
-        "</section>"
-    )
-
-
-def _user_rows(rows: list[UsageGroupRow]) -> list[list[str]]:
-    return [
-        [
-            row.group_key,
-            row.vo or "-",
-            str(row.jobs),
-            format_scaled_pair(row.wall_seconds, row.scaled_wall_seconds),
-            format_scaled_pair(row.cpu_total_seconds, row.scaled_cpu_seconds),
-            format_number(row.avg_processors),
-            str(row.max_processors),
-            format_gb(row.memory_real_kb_max),
-        ]
-        for row in rows
-    ]
-
-
-def _vo_rows(rows: list[UsageGroupRow]) -> list[list[str]]:
-    return [
-        [
-            row.group_key,
-            str(row.users or 0),
-            str(row.jobs),
-            format_scaled_pair(row.wall_seconds, row.scaled_wall_seconds),
-            format_scaled_pair(row.cpu_total_seconds, row.scaled_cpu_seconds),
-            format_number(row.avg_processors),
-            str(row.max_processors),
-            format_gb(row.memory_real_kb_max),
-        ]
-        for row in rows
-    ]
-
-
-def _accounting_group_rows(rows: list[UsageGroupRow]) -> list[list[str]]:
-    return [
-        [
-            row.group_key,
-            row.vo or "-",
-            str(row.users or 0),
-            str(row.jobs),
-            format_scaled_pair(row.wall_seconds, row.scaled_wall_seconds),
-            format_scaled_pair(row.cpu_total_seconds, row.scaled_cpu_seconds),
-            format_number(row.avg_processors),
-            str(row.max_processors),
-            format_gb(row.memory_real_kb_max),
-        ]
-        for row in rows
-    ]
-
-
-def render_monthly_report_html(
+def build_monthly_report_context(
     summary: MonthlyReportSummary,
     user_rows: list[UsageGroupRow],
     vo_rows: list[UsageGroupRow],
@@ -111,68 +85,58 @@ def render_monthly_report_html(
     *,
     benchmark_type: str,
     benchmark_baseline: float,
-) -> str:
-    summary_html = "".join(
-        [
-            _summary_item("Month", summary.period),
-            _summary_item("Days Included", str(summary.days_included)),
-            _summary_item("Total Jobs", str(summary.jobs_total)),
-            _summary_item("Total Wall Hours", format_hours(summary.wall_seconds)),
-            _summary_item("Total CPU Hours", format_hours(summary.cpu_total_seconds)),
-        ]
-    )
-
+) -> dict[str, Any]:
     scaling_note = (
         f"Scaled values are adjusted relative to the configured {benchmark_type} baseline of "
         f"{benchmark_baseline:g}. The machine benchmark of the node each job ran on is used to "
         "normalize usage across nodes with different performance."
     )
 
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>HTCondor Accounting Monthly Report {escape(summary.period)}</title>
-  <style>
-    body {{ font-family: sans-serif; margin: 1.5rem; color: #1f2937; }}
-    h1 {{ margin-bottom: 0.5rem; }}
-    .summary-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }}
-    .summary-item {{ border: 1px solid #d1d5db; padding: 0.5rem 0.6rem; border-radius: 4px; background: #f9fafb; }}
-    .summary-label {{ display: block; font-size: 0.75rem; color: #4b5563; }}
-    .summary-value {{ display: block; font-weight: 700; }}
-    .note {{ margin: 0 0 1rem 0; padding: 0.6rem 0.75rem; background: #eff6ff; border-left: 3px solid #60a5fa; font-size: 0.9rem; }}
-    .report-section {{ margin-bottom: 1.25rem; }}
-    .section-header {{ display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.35rem; }}
-    .section-header h2 {{ margin: 0; font-size: 1rem; }}
-    .section-header a {{ font-size: 0.85rem; }}
-    table {{ border-collapse: collapse; width: 100%; font-size: 0.87rem; }}
-    th, td {{ border: 1px solid #d1d5db; padding: 0.28rem 0.4rem; text-align: left; white-space: nowrap; }}
-    th {{ background: #f3f4f6; }}
-    tbody tr:nth-child(even) {{ background: #fafafa; }}
-  </style>
-</head>
-<body>
-  <h1>HTCondor Accounting Monthly Report {escape(summary.period)}</h1>
-  <div class="summary-grid">{summary_html}</div>
-  <p class="note">{escape(scaling_note)}</p>
-  {_render_table_section(
-      "Users",
-      "users.csv",
-      ["User", "VO", "Jobs", "Wall h (scaled)", "CPU h (scaled)", "Avg Proc", "Max Proc", "Max Mem GB"],
-      _user_rows(user_rows),
-  )}
-  {_render_table_section(
-      "VOs",
-      "vos.csv",
-      ["VO", "Users", "Jobs", "Wall h (scaled)", "CPU h (scaled)", "Avg Proc", "Max Proc", "Max Mem GB"],
-      _vo_rows(vo_rows),
-  )}
-  {_render_table_section(
-      "Accounting Groups",
-      "accounting_groups.csv",
-      ["Accounting Group", "VO", "Users", "Jobs", "Wall h (scaled)", "CPU h (scaled)", "Avg Proc", "Max Proc", "Max Mem GB"],
-      _accounting_group_rows(accounting_group_rows),
-  )}
-</body>
-</html>
-"""
+    return {
+        "title": f"HTCondor Accounting Monthly Report {summary.period}",
+        "month_label": summary.period,
+        "summary_items": [
+            {"label": "Month", "value": summary.period},
+            {"label": "Days Included", "value": str(summary.days_included)},
+            {"label": "Total Jobs", "value": str(summary.jobs_total)},
+            {"label": "Total Wall Hours", "value": format_hours(summary.wall_seconds)},
+            {"label": "Total CPU Hours", "value": format_hours(summary.cpu_total_seconds)},
+        ],
+        "scaling_note": scaling_note,
+        "sections": [
+            {
+                "title": "Users",
+                "csv_href": "users.csv",
+                "headers": ["User", "VO", "Jobs", "Wall h (scaled)", "CPU h (scaled)", "Avg Proc", "Max Proc", "Max Mem GB"],
+                "row_fields": ["user", "vo", "jobs", "wall_hours_display", "cpu_hours_display", "avg_processors_display", "max_processors_display", "max_memory_gb_display"],
+                "rows": _build_rows(user_rows, "users"),
+            },
+            {
+                "title": "VOs",
+                "csv_href": "vos.csv",
+                "headers": ["VO", "Users", "Jobs", "Wall h (scaled)", "CPU h (scaled)", "Avg Proc", "Max Proc", "Max Mem GB"],
+                "row_fields": ["vo", "users", "jobs", "wall_hours_display", "cpu_hours_display", "avg_processors_display", "max_processors_display", "max_memory_gb_display"],
+                "rows": _build_rows(vo_rows, "vos"),
+            },
+            {
+                "title": "Accounting Groups",
+                "csv_href": "accounting_groups.csv",
+                "headers": ["Accounting Group", "VO", "Users", "Jobs", "Wall h (scaled)", "CPU h (scaled)", "Avg Proc", "Max Proc", "Max Mem GB"],
+                "row_fields": ["accounting_group", "vo", "users", "jobs", "wall_hours_display", "cpu_hours_display", "avg_processors_display", "max_processors_display", "max_memory_gb_display"],
+                "rows": _build_rows(accounting_group_rows, "accounting_groups"),
+            },
+        ],
+    }
+
+
+@lru_cache(maxsize=1)
+def _jinja_environment() -> Environment:
+    return Environment(
+        loader=PackageLoader("htcondor_accounting", "templates"),
+        autoescape=select_autoescape(["html", "xml"]),
+    )
+
+
+def render_monthly_report_html(context: dict[str, Any]) -> str:
+    template = _jinja_environment().get_template("monthly_report.html")
+    return template.render(**context)

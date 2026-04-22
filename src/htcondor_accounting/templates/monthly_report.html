@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+  <div class="summary-grid">
+    {% for item in summary_items %}
+      <div class="summary-item">
+        <span class="summary-label">{{ item.label }}</span>
+        <span class="summary-value">{{ item.value }}</span>
+      </div>
+    {% endfor %}
+  </div>
+  <p class="note">{{ scaling_note }}</p>
+
+  {% for section in sections %}
+    <section class="report-section">
+      <div class="section-header">
+        <h2>{{ section.title }}</h2>
+        <a href="{{ section.csv_href }}">Download CSV</a>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            {% for header in section.headers %}
+              <th>{{ header }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in section.rows %}
+            <tr>
+              {% for field in section.row_fields %}
+                <td>{{ row[field] }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endfor %}
+{% endblock %}

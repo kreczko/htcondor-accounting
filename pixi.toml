@@ -13,6 +13,7 @@ pytest = "*"
 ruff = "*"
 mypy = "*"
 rich = "*"
+jinja2 = "*"
 
 [pypi-dependencies]
 htcondor-accounting = { path = ".", editable = true }

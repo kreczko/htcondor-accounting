@@ -4,6 +4,7 @@ from pathlib import Path
 from htcondor_accounting.export.csv import write_csv_rows
 from htcondor_accounting.models.reporting import UsageGroupRow
 from htcondor_accounting.render.html import (
+    build_monthly_report_context,
     format_gb,
     format_hours,
     format_scaled_pair,
@@ -230,15 +231,15 @@ def test_html_render_includes_summary_and_tables(tmp_path: Path) -> None:
             jobs=1,
             users=None,
             vo="atlas",
-            wall_seconds=10,
+            wall_seconds=3600,
             cpu_user_seconds=4,
             cpu_sys_seconds=1,
-            cpu_total_seconds=5,
-            scaled_wall_seconds=10.0,
-            scaled_cpu_seconds=5.0,
+            cpu_total_seconds=7200,
+            scaled_wall_seconds=5400.0,
+            scaled_cpu_seconds=10800.0,
             avg_processors=1.0,
             max_processors=1,
-            memory_real_kb_max=100,
+            memory_real_kb_max=2097152,
             memory_virtual_kb_max=300,
         )
     ]
@@ -281,7 +282,7 @@ def test_html_render_includes_summary_and_tables(tmp_path: Path) -> None:
         )
     ]
 
-    html = render_monthly_report_html(
+    context = build_monthly_report_context(
         summary,
         user_rows,
         vo_rows,
@@ -289,6 +290,7 @@ def test_html_render_includes_summary_and_tables(tmp_path: Path) -> None:
         benchmark_type="hepscore23",
         benchmark_baseline=20.0,
     )
+    html = render_monthly_report_html(context)
 
     assert "HTCondor Accounting Monthly Report 2026-04" in html
     assert "Days Included" in html
@@ -299,10 +301,31 @@ def test_html_render_includes_summary_and_tables(tmp_path: Path) -> None:
     assert "alice" in html
     assert "atlas" in html
     assert "group-a" in html
-    assert 'href=\'users.csv\'' in html
-    assert 'href=\'vos.csv\'' in html
-    assert 'href=\'accounting_groups.csv\'' in html
+    assert 'href="users.csv"' in html or "href='users.csv'" in html
+    assert 'href="vos.csv"' in html or "href='vos.csv'" in html
+    assert 'href="accounting_groups.csv"' in html or "href='accounting_groups.csv'" in html
     assert "configured hepscore23 baseline of 20" in html
+    assert "1.0 (1.5)" in html
+    assert "2.0 (3.0)" in html
+    assert "2.0" in html
+
+
+def test_jinja_context_builds_sections_and_relative_links() -> None:
+    summary = build_monthly_report_summary(2026, 4, [])
+    context = build_monthly_report_context(
+        summary,
+        [],
+        [],
+        [],
+        benchmark_type="hepscore23",
+        benchmark_baseline=20.0,
+    )
+
+    assert context["title"] == "HTCondor Accounting Monthly Report 2026-04"
+    assert context["sections"][0]["csv_href"] == "users.csv"
+    assert context["sections"][1]["csv_href"] == "vos.csv"
+    assert context["sections"][2]["csv_href"] == "accounting_groups.csv"
+    assert "configured hepscore23 baseline of 20" in context["scaling_note"]
 
 
 def test_html_helpers_format_human_units_and_scaled_pairs() -> None:

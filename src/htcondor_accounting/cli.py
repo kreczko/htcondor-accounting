@@ -24,7 +24,7 @@ from htcondor_accounting.export.ledger import (
 )
 from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
-from htcondor_accounting.render.html import render_monthly_report_html
+from htcondor_accounting.render.html import build_monthly_report_context, render_monthly_report_html
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
 from htcondor_accounting.report.jobs import (
     group_jobs_by_accounting_group,
@@ -900,15 +900,16 @@ def render_monthly_command(
         )
     _write_json(summary_path, summary_json_payload(summary))
     ensure_parent_dir(index_path)
+    report_context = build_monthly_report_context(
+        summary,
+        user_rows,
+        vo_rows,
+        accounting_group_rows,
+        benchmark_type=app_config.benchmark.type,
+        benchmark_baseline=app_config.benchmark.baseline_per_core,
+    )
     index_path.write_text(
-        render_monthly_report_html(
-            summary,
-            user_rows,
-            vo_rows,
-            accounting_group_rows,
-            benchmark_type=app_config.benchmark.type,
-            benchmark_baseline=app_config.benchmark.baseline_per_core,
-        ),
+        render_monthly_report_html(report_context),
         encoding="utf-8",
     )
 

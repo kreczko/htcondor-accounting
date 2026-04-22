@@ -67,3 +67,4 @@ This writes:
 - `archive/reports/monthly/2026/04/index.html`
 
 `users.csv` now includes a resolved `vo` column, `vos.csv` includes a distinct `users` count, and `accounting_groups.csv` provides an internal accounting-group cross-check view.
+The monthly HTML page is rendered from Jinja templates in `src/htcondor_accounting/templates/`, uses relative links, and keeps presentation logic separate from Python data preparation.
