@@ -18,6 +18,8 @@ def _render_table(title: str, rows: Iterable[UsageGroupRow]) -> str:
     items = list(rows)
     headers = [
         "group_key",
+        "users",
+        "vo",
         "jobs",
         "wall_seconds",
         "cpu_user_seconds",
@@ -25,7 +27,8 @@ def _render_table(title: str, rows: Iterable[UsageGroupRow]) -> str:
         "cpu_total_seconds",
         "scaled_wall_seconds",
         "scaled_cpu_seconds",
-        "processors_total",
+        "avg_processors",
+        "max_processors",
         "memory_real_kb_max",
         "memory_virtual_kb_max",
     ]

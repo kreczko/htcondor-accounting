@@ -52,6 +52,7 @@ def sanitize_reporting_record(record: dict[str, Any], day: str) -> dict[str, Any
     timing = record.get("timing", {})
     job = record.get("job", {})
     source = record.get("source", {})
+    accounting = record.get("accounting", {})
 
     cpu_user_seconds = int(usage.get("cpu_user_seconds") or 0)
     cpu_sys_seconds = int(usage.get("cpu_sys_seconds") or 0)
@@ -81,6 +82,10 @@ def sanitize_reporting_record(record: dict[str, Any], day: str) -> dict[str, Any
         "scale_factor": benchmark.get("scale_factor"),
         "benchmark_type": benchmark.get("benchmark_type"),
         "source_schedd": source.get("schedd"),
+        "acct_group": accounting.get("acct_group"),
+        "acct_group_user": accounting.get("acct_group_user"),
+        "accounting_group": accounting.get("accounting_group"),
+        "route_name": accounting.get("route_name"),
         "day": day,
     }
 

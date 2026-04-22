@@ -26,7 +26,13 @@ from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
 from htcondor_accounting.render.html import render_monthly_report_html
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
-from htcondor_accounting.report.jobs import group_jobs_by_schedd, group_jobs_by_user, group_jobs_by_vo, load_monthly_jobs
+from htcondor_accounting.report.jobs import (
+    group_jobs_by_accounting_group,
+    group_jobs_by_schedd,
+    group_jobs_by_user,
+    group_jobs_by_vo,
+    load_monthly_jobs,
+)
 from htcondor_accounting.report.rollup import (
     RollupResult,
     derive_all_rollups,
@@ -46,6 +52,7 @@ from htcondor_accounting.store.layout import (
     manifest_file,
     raw_history_run_file,
     reports_monthly_index_path,
+    reports_monthly_accounting_groups_csv_path,
     reports_monthly_schedds_csv_path,
     reports_monthly_summary_path,
     reports_monthly_users_csv_path,
@@ -801,12 +808,13 @@ def render_monthly_command(
     jobs = load_monthly_jobs(resolved_output_root, year, month)
     user_rows = group_jobs_by_user(jobs)
     vo_rows = group_jobs_by_vo(jobs)
+    accounting_group_rows = group_jobs_by_accounting_group(jobs)
     schedd_rows = group_jobs_by_schedd(jobs) if include_schedds else None
     summary = build_monthly_report_summary(year, month, jobs)
 
-    fieldnames = [
-        "group_type",
+    user_fieldnames = [
         "group_key",
+        "vo",
         "jobs",
         "wall_seconds",
         "cpu_user_seconds",
@@ -814,21 +822,82 @@ def render_monthly_command(
         "cpu_total_seconds",
         "scaled_wall_seconds",
         "scaled_cpu_seconds",
-        "processors_total",
+        "avg_processors",
+        "max_processors",
         "memory_real_kb_max",
         "memory_virtual_kb_max",
-        "memory_real_kb_avg",
-        "memory_virtual_kb_avg",
+    ]
+    vo_fieldnames = [
+        "group_key",
+        "users",
+        "jobs",
+        "wall_seconds",
+        "cpu_user_seconds",
+        "cpu_sys_seconds",
+        "cpu_total_seconds",
+        "scaled_wall_seconds",
+        "scaled_cpu_seconds",
+        "avg_processors",
+        "max_processors",
+        "memory_real_kb_max",
+        "memory_virtual_kb_max",
+    ]
+    accounting_fieldnames = [
+        "group_key",
+        "vo",
+        "users",
+        "jobs",
+        "wall_seconds",
+        "cpu_user_seconds",
+        "cpu_sys_seconds",
+        "cpu_total_seconds",
+        "scaled_wall_seconds",
+        "scaled_cpu_seconds",
+        "avg_processors",
+        "max_processors",
+        "memory_real_kb_max",
+        "memory_virtual_kb_max",
     ]
     users_csv_path = reports_monthly_users_csv_path(resolved_output_root, year, month)
     vos_csv_path = reports_monthly_vos_csv_path(resolved_output_root, year, month)
+    accounting_groups_csv_path = reports_monthly_accounting_groups_csv_path(resolved_output_root, year, month)
     summary_path = reports_monthly_summary_path(resolved_output_root, year, month)
     index_path = reports_monthly_index_path(resolved_output_root, year, month)
 
-    write_csv_rows(users_csv_path, user_rows, fieldnames)
-    write_csv_rows(vos_csv_path, vo_rows, fieldnames)
+    write_csv_rows(
+        users_csv_path,
+        [{**row.model_dump(mode="json"), "user": row.group_key} for row in user_rows],
+        ["user", *user_fieldnames[1:]],
+    )
+    write_csv_rows(
+        vos_csv_path,
+        [{**row.model_dump(mode="json"), "vo": row.group_key} for row in vo_rows],
+        ["vo", *vo_fieldnames[1:]],
+    )
+    write_csv_rows(
+        accounting_groups_csv_path,
+        [{**row.model_dump(mode="json"), "accounting_group": row.group_key} for row in accounting_group_rows],
+        ["accounting_group", *accounting_fieldnames[1:]],
+    )
     if include_schedds:
-        write_csv_rows(reports_monthly_schedds_csv_path(resolved_output_root, year, month), schedd_rows or [], fieldnames)
+        write_csv_rows(
+            reports_monthly_schedds_csv_path(resolved_output_root, year, month),
+            [{**row.model_dump(mode="json"), "schedd": row.group_key} for row in (schedd_rows or [])],
+            [
+                "schedd",
+                "jobs",
+                "wall_seconds",
+                "cpu_user_seconds",
+                "cpu_sys_seconds",
+                "cpu_total_seconds",
+                "scaled_wall_seconds",
+                "scaled_cpu_seconds",
+                "avg_processors",
+                "max_processors",
+                "memory_real_kb_max",
+                "memory_virtual_kb_max",
+            ],
+        )
     _write_json(summary_path, summary_json_payload(summary))
     ensure_parent_dir(index_path)
     index_path.write_text(

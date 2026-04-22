@@ -14,7 +14,7 @@ def build_monthly_report_summary(year: int, month: int, jobs: list[dict[str, Any
     cpu_total_seconds = sum(int(job.get("cpu_total_seconds") or 0) for job in jobs)
     scaled_wall_seconds = 0.0
     scaled_cpu_seconds = 0.0
-    processors_total = sum(int(job.get("processors") or 1) for job in jobs)
+    processor_values = [int(job.get("processors") or 1) for job in jobs]
     memory_real_values = [int(job["memory_real_kb"]) for job in jobs if job.get("memory_real_kb") is not None]
     memory_virtual_values = [int(job["memory_virtual_kb"]) for job in jobs if job.get("memory_virtual_kb") is not None]
 
@@ -35,7 +35,8 @@ def build_monthly_report_summary(year: int, month: int, jobs: list[dict[str, Any
         cpu_total_seconds=cpu_total_seconds,
         scaled_wall_seconds=scaled_wall_seconds,
         scaled_cpu_seconds=scaled_cpu_seconds,
-        processors_total=processors_total,
+        avg_processors=(sum(processor_values) / len(processor_values)) if processor_values else None,
+        max_processors=max(processor_values) if processor_values else None,
         memory_real_kb_max=max(memory_real_values) if memory_real_values else None,
         memory_virtual_kb_max=max(memory_virtual_values) if memory_virtual_values else None,
     )

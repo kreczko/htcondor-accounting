@@ -112,6 +112,11 @@ def reports_monthly_vos_csv_path(root: Path, year: int, month: int) -> Path:
     return reports_monthly_dir(root, year, month) / "vos.csv"
 
 
+def reports_monthly_accounting_groups_csv_path(root: Path, year: int, month: int) -> Path:
+    """Return the monthly accounting-group usage CSV path."""
+    return reports_monthly_dir(root, year, month) / "accounting_groups.csv"
+
+
 def reports_monthly_schedds_csv_path(root: Path, year: int, month: int) -> Path:
     """Return the monthly schedd usage CSV path."""
     return reports_monthly_dir(root, year, month) / "schedds.csv"

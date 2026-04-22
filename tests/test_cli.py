@@ -464,6 +464,10 @@ def test_export_apel_daily_command_writes_staged_messages(tmp_path: Path) -> Non
                 "scale_factor": 2.0,
                 "benchmark_type": "hepscore23",
                 "source_schedd": "lcgce02.phy.bris.ac.uk",
+                "acct_group": "group-a",
+                "acct_group_user": "alice",
+                "accounting_group": "group-a.main",
+                "route_name": "route-a",
                 "day": "2026-04-17",
             }
         ],
@@ -618,11 +622,24 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     assert "Render Monthly" in result.stdout
     assert (report_dir / "users.csv").exists()
     assert (report_dir / "vos.csv").exists()
+    assert (report_dir / "accounting_groups.csv").exists()
     assert (report_dir / "summary.json").exists()
     assert (report_dir / "index.html").exists()
     summary = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["period"] == "2026-04"
     assert summary["jobs_total"] == 1
+    assert (report_dir / "users.csv").read_text(encoding="utf-8").splitlines()[0] == (
+        "user,vo,jobs,wall_seconds,cpu_user_seconds,cpu_sys_seconds,cpu_total_seconds,"
+        "scaled_wall_seconds,scaled_cpu_seconds,avg_processors,max_processors,memory_real_kb_max,memory_virtual_kb_max"
+    )
+    assert (report_dir / "vos.csv").read_text(encoding="utf-8").splitlines()[0] == (
+        "vo,users,jobs,wall_seconds,cpu_user_seconds,cpu_sys_seconds,cpu_total_seconds,"
+        "scaled_wall_seconds,scaled_cpu_seconds,avg_processors,max_processors,memory_real_kb_max,memory_virtual_kb_max"
+    )
+    assert (report_dir / "accounting_groups.csv").read_text(encoding="utf-8").splitlines()[0] == (
+        "accounting_group,vo,users,jobs,wall_seconds,cpu_user_seconds,cpu_sys_seconds,cpu_total_seconds,"
+        "scaled_wall_seconds,scaled_cpu_seconds,avg_processors,max_processors,memory_real_kb_max,memory_virtual_kb_max"
+    )
 
 
 def test_push_apel_daily_skips_when_sent_marker_exists(tmp_path: Path) -> None:

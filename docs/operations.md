@@ -83,6 +83,12 @@ Outputs are written under:
 output_root/reports/monthly/YYYY/MM/
 ```
 
+The monthly CSV set currently includes:
+
+- `users.csv` with a resolved `vo` marker per user
+- `vos.csv` with a distinct `users` count per VO
+- `accounting_groups.csv` for internal accounting-group cross-checking
+
 ## Cron Example
 
 The script computes yesterday in UTC by default, so cron only needs to pass the output root:

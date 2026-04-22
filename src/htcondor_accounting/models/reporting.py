@@ -7,17 +7,18 @@ class UsageGroupRow(BaseModel):
     group_type: str
     group_key: str
     jobs: int
+    users: int | None = None
+    vo: str | None = None
     wall_seconds: int
     cpu_user_seconds: int
     cpu_sys_seconds: int
     cpu_total_seconds: int
     scaled_wall_seconds: float
     scaled_cpu_seconds: float
-    processors_total: int
+    avg_processors: float
+    max_processors: int
     memory_real_kb_max: int | None = None
     memory_virtual_kb_max: int | None = None
-    memory_real_kb_avg: float | None = None
-    memory_virtual_kb_avg: float | None = None
 
 
 class MonthlyReportSummary(BaseModel):
@@ -34,6 +35,7 @@ class MonthlyReportSummary(BaseModel):
     cpu_total_seconds: int
     scaled_wall_seconds: float
     scaled_cpu_seconds: float
-    processors_total: int
+    avg_processors: float | None = None
+    max_processors: int | None = None
     memory_real_kb_max: int | None = None
     memory_virtual_kb_max: int | None = None

@@ -62,5 +62,8 @@ This writes:
 
 - `archive/reports/monthly/2026/04/users.csv`
 - `archive/reports/monthly/2026/04/vos.csv`
+- `archive/reports/monthly/2026/04/accounting_groups.csv`
 - `archive/reports/monthly/2026/04/summary.json`
 - `archive/reports/monthly/2026/04/index.html`
+
+`users.csv` now includes a resolved `vo` column, `vos.csv` includes a distinct `users` count, and `accounting_groups.csv` provides an internal accounting-group cross-check view.

@@ -20,6 +20,7 @@ from htcondor_accounting.store.layout import (
     manifest_day_dir,
     manifest_file,
     raw_history_run_file,
+    reports_monthly_accounting_groups_csv_path,
     reports_monthly_dir,
     reports_monthly_index_path,
     reports_monthly_summary_path,
@@ -75,6 +76,7 @@ def test_reports_monthly_layout_paths() -> None:
     root = Path("archive")
 
     assert reports_monthly_dir(root, 2026, 4) == Path("archive/reports/monthly/2026/04")
+    assert reports_monthly_accounting_groups_csv_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/accounting_groups.csv")
     assert reports_monthly_users_csv_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/users.csv")
     assert reports_monthly_vos_csv_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/vos.csv")
     assert reports_monthly_summary_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/summary.json")
