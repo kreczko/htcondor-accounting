@@ -44,6 +44,7 @@ def _record(job_id: str, owner: str, vo: str | None, scale_factor: float | None)
             status_time=1776428989,
         ),
         identity=IdentityInfo(vo=vo),
+        resolved_identity={"vo": vo, "vo_group": f"/{vo}" if vo else None, "vo_role": None, "fqan": f"/{vo}" if vo else None, "resolution_method": "test"},
         benchmark=BenchmarkInfo(scale_factor=scale_factor),
     )
 
@@ -741,6 +742,7 @@ def test_inspect_full_verbosity_shows_all_fields_and_parsed_job_id(tmp_path: Pat
     assert "\"schedd\": \"lcgce02.phy.bris.ac.uk\"" in result.stdout
     assert "\"date\": \"2026-04-17 10:11:10\"" in result.stdout
     assert "\"identity_display\": \"issuer=https://issuer.example subject=alice-subject\"" in result.stdout
+    assert "\"resolved_identity\"" in result.stdout
 
 
 def test_inspect_directory_respects_limit(tmp_path: Path) -> None:

@@ -275,12 +275,13 @@ def _inspect_row(record: dict[str, Any], verbosity: InspectVerbosity) -> list[st
     schedd = str(_field(record, "source", "schedd") or parsed_job["schedd"])
     if parsed_job["job_id"]:
         schedd += '#' + str(parsed_job["job_id"])
+    resolved_vo = _field(record, "resolved_identity", "vo") or _field(record, "identity", "vo")
     row = [
         schedd,
         _format_unix_timestamp(_field(record, "timing", "start_time") or parsed_job["timestamp"]),
         _format_unix_timestamp(_field(record, "timing", "end_time")),
         str(_field(record, "job", "local_user") or _field(record, "job", "owner") or "-"),
-        str(_field(record, "identity", "vo") or "-"),
+        str(resolved_vo or "-"),
         _format_scale_factor(_field(record, "benchmark", "scale_factor")),
     ]
 
@@ -297,12 +298,13 @@ def _inspect_row(record: dict[str, Any], verbosity: InspectVerbosity) -> list[st
 
 def _inspect_object(record: dict[str, Any], verbosity: InspectVerbosity) -> dict[str, Any]:
     parsed_job = _parse_global_job_id(_field(record, "job", "global_job_id"))
+    resolved_vo = _field(record, "resolved_identity", "vo") or _field(record, "identity", "vo")
     base = {
         "schedd_job_id": f"{_field(record, 'source', 'schedd') or parsed_job['schedd']}#{parsed_job['job_id']}",
         "start_time": _field(record, "timing", "start_time") or parsed_job["timestamp"],
         "end_time": _field(record, "timing", "end_time"),
         "user": _field(record, "job", "local_user") or _field(record, "job", "owner"),
-        "vo": _field(record, "identity", "vo"),
+        "vo": resolved_vo,
         "scale_factor": _field(record, "benchmark", "scale_factor"),
     }
 

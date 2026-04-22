@@ -47,6 +47,7 @@ def day_string(when: datetime) -> str:
 def sanitize_reporting_record(record: dict[str, Any], day: str) -> dict[str, Any]:
     usage = record.get("usage", {})
     identity = record.get("identity", {})
+    resolved_identity = record.get("resolved_identity", {})
     benchmark = record.get("benchmark", {})
     timing = record.get("timing", {})
     job = record.get("job", {})
@@ -62,9 +63,11 @@ def sanitize_reporting_record(record: dict[str, Any], day: str) -> dict[str, Any
         "global_job_id": job.get("global_job_id"),
         "owner": job.get("owner"),
         "local_user": job.get("local_user"),
-        "vo": identity.get("vo"),
-        "vo_group": identity.get("vo_group"),
-        "vo_role": identity.get("vo_role"),
+        "vo": resolved_identity.get("vo") or identity.get("vo"),
+        "vo_group": resolved_identity.get("vo_group") or identity.get("vo_group"),
+        "vo_role": resolved_identity.get("vo_role") or identity.get("vo_role"),
+        "fqan": resolved_identity.get("fqan") or identity.get("fqan"),
+        "resolution_method": resolved_identity.get("resolution_method"),
         "auth_method": identity.get("auth_method"),
         "start_time": timing.get("start_time"),
         "end_time": timing.get("end_time"),
