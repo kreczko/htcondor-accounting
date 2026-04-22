@@ -40,6 +40,11 @@ class IdentityInfo(BaseModel):
     token_issuer: Optional[str] = None
     token_subject: Optional[str] = None
     token_groups: list[str] = Field(default_factory=list)
+    x509_email: Optional[str] = None
+    orig_dn: Optional[str] = None
+    orig_fqan: Optional[str] = None
+    orig_vo_name: Optional[str] = None
+    orig_fqan_list: Optional[str] = None
 
 class AccountingInfo(BaseModel):
     acct_group: Optional[str] = None
