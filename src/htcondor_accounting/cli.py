@@ -13,7 +13,14 @@ from rich.table import Table
 
 from htcondor_accounting.config.load import load_config, resolve_config_path
 from htcondor_accounting.export.apel_messages import export_apel_daily, staged_apel_files
-from htcondor_accounting.export.dirq import promote_staged_message
+from htcondor_accounting.export.dirq import promote_staged_message, read_staged_message_info
+from htcondor_accounting.export.ledger import (
+    load_ledger_entries,
+    parse_run_stamp_from_staged_path,
+    sent_marker_exists,
+    write_resend_marker,
+    write_sent_marker,
+)
 from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
@@ -28,6 +35,8 @@ from htcondor_accounting.report.rollup import (
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import (
     RunStamp,
+    apel_ledger_resends_dir,
+    apel_ledger_sent_dir,
     canonical_run_file,
     ensure_parent_dir,
     manifest_file,
@@ -316,6 +325,36 @@ def _inspect_object(record: dict[str, Any], verbosity: InspectVerbosity) -> dict
         return _full_record(record)
 
     return base
+
+
+def _ledger_event_time(entry: dict[str, Any]) -> str | None:
+    return str(entry.get("first_pushed_at") or entry.get("resent_at") or "") or None
+
+
+def _filtered_ledger_entries(
+    output_root: Path,
+    *,
+    day: str | None,
+    message_md5: str | None,
+    include_resends: bool,
+) -> list[dict[str, Any]]:
+    entries = load_ledger_entries(output_root, include_resends=include_resends)
+    filtered: list[dict[str, Any]] = []
+    for entry in entries:
+        if day is not None and entry.get("day") != day:
+            continue
+        if message_md5 is not None and entry.get("message_md5") != message_md5:
+            continue
+        filtered.append(entry)
+    return sorted(
+        filtered,
+        key=lambda entry: (
+            str(entry.get("day") or ""),
+            str(entry.get("message_md5") or ""),
+            str(_ledger_event_time(entry) or ""),
+            str(entry.get("_ledger_path") or ""),
+        ),
+    )
 
 
 def _raw_ad_bucket_datetime(ad: dict[str, Any]) -> datetime:
@@ -766,6 +805,8 @@ def push_apel_daily_command(
     day: str = typer.Option(..., help="Day to push, e.g. 2026-04-17"),
     config: Optional[Path] = typer.Option(None, help="Path to site config file"),
     output_root: Optional[Path] = typer.Option(None, help="Root directory for APEL data"),
+    force_resend: bool = typer.Option(False, "--force-resend", help="Push even if a sent marker already exists"),
+    reason: Optional[str] = typer.Option(None, help="Optional resend reason to record in the ledger"),
 ) -> None:
     """Promote staged APEL message files into the live dirq-compatible outgoing queue."""
     app_config = load_config(config)
@@ -773,22 +814,112 @@ def push_apel_daily_command(
     when = _parse_day(day)
     staged_files = staged_apel_files(resolved_output_root, when, app_config.apel)
     outgoing_root = _resolved_outgoing_root(resolved_output_root, app_config.apel.outgoing_dir)
+    pushed = 0
+    skipped = 0
+    resent = 0
 
-    results = [promote_staged_message(path, outgoing_root) for path in staged_files]
-    written = sum(1 for result in results if result.written)
+    for path in staged_files:
+        info = read_staged_message_info(path)
+        already_sent = sent_marker_exists(resolved_output_root, info.message_md5)
+
+        if already_sent and not force_resend:
+            skipped += 1
+            continue
+
+        result = promote_staged_message(path, outgoing_root)
+        run_stamp = parse_run_stamp_from_staged_path(path)
+
+        if force_resend and already_sent:
+            write_resend_marker(
+                resolved_output_root,
+                day=day,
+                info=info,
+                outgoing_path=result.queue_path,
+                run_stamp=run_stamp,
+                reason=reason,
+            )
+            resent += 1
+            continue
+
+        write_sent_marker(
+            resolved_output_root,
+            day=day,
+            info=info,
+            outgoing_path=result.queue_path,
+            run_stamp=run_stamp,
+        )
+        pushed += 1
 
     summary = Table(title="APEL queue promotion")
     summary.add_column("Field")
     summary.add_column("Value")
     summary.add_row("Day", day)
     summary.add_row("Staged files", str(len(staged_files)))
-    summary.add_row("Queue files written", str(written))
+    summary.add_row("Already-sent skipped", str(skipped))
+    summary.add_row("Newly pushed", str(pushed))
+    summary.add_row("Resent", str(resent))
     summary.add_row("Outgoing root", str(outgoing_root))
+    summary.add_row("Ledger root", str(resolved_output_root / "apel" / "ledger"))
 
     console.print("[bold]Push APEL Daily[/bold]")
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
     console.print(summary)
+
+
+@app.command("inspect-apel-ledger")
+def inspect_apel_ledger(
+    day: Optional[str] = typer.Option(None, help="Filter to a specific day, e.g. 2026-04-17"),
+    hash: Optional[str] = typer.Option(None, "--hash", help="Filter to a specific message MD5"),
+    include_resends: bool = typer.Option(False, help="Include resend events in addition to sent markers"),
+    format: InspectFormat = typer.Option(InspectFormat.table, "--format", help="Output format"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for APEL data"),
+) -> None:
+    """Inspect the APEL push ledger."""
+    app_config = load_config(config)
+    resolved_output_root = output_root or app_config.storage.root
+    entries = _filtered_ledger_entries(
+        resolved_output_root,
+        day=day,
+        message_md5=hash,
+        include_resends=include_resends,
+    )
+
+    if format == InspectFormat.json:
+        console.print_json(json.dumps(entries, sort_keys=True))
+        return
+    if format == InspectFormat.ndjson:
+        for entry in entries:
+            console.print(json.dumps(entry, sort_keys=True))
+        return
+
+    table = Table(title="APEL ledger")
+    table.add_column("Type")
+    table.add_column("Day")
+    table.add_column("MD5")
+    table.add_column("Pushed At")
+    table.add_column("Records", justify="right")
+    table.add_column("Bytes", justify="right")
+    table.add_column("Outgoing Path")
+    for entry in entries:
+        table.add_row(
+            str(entry.get("record_type") or "-"),
+            str(entry.get("day") or "-"),
+            str(entry.get("message_md5") or "-"),
+            str(_ledger_event_time(entry) or "-"),
+            str(entry.get("records") or "-"),
+            str(entry.get("bytes") or "-"),
+            str(entry.get("outgoing_path") or "-"),
+        )
+
+    console.print("[bold]Inspect APEL Ledger[/bold]")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(f"  sent       = {apel_ledger_sent_dir(resolved_output_root)}")
+    if include_resends:
+        console.print(f"  resends    = {apel_ledger_resends_dir(resolved_output_root)}")
+    console.print(table)
 
 
 @app.command("show-config")

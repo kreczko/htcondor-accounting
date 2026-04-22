@@ -546,13 +546,200 @@ def test_push_apel_daily_promotes_messages_into_dirq_queue(tmp_path: Path) -> No
     )
 
     queue_files = [path for path in (tmp_path / "archive" / "apel" / "outgoing").rglob("*") if path.is_file()]
+    sent_markers = list((tmp_path / "archive" / "apel" / "ledger" / "sent").glob("*.json"))
 
     assert result.exit_code == 0
     assert "Push APEL Daily" in result.stdout
     assert "Staged files" in result.stdout
+    assert "Already-sent skipped" in result.stdout
+    assert "Newly pushed" in result.stdout
     assert len(queue_files) == 1
+    assert len(sent_markers) == 1
     assert len(queue_files[0].parent.name) == 8
     assert len(queue_files[0].name) == 14
+
+
+def test_push_apel_daily_skips_when_sent_marker_exists(tmp_path: Path) -> None:
+    staged_dir = tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17"
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    staged_file = staged_dir / "20260421T132304Z-0001.msg"
+    staged_file.write_text("%%\nSite: TEST\n", encoding="utf-8")
+
+    sent_dir = tmp_path / "archive" / "apel" / "ledger" / "sent"
+    sent_dir.mkdir(parents=True, exist_ok=True)
+    sent_marker = sent_dir / "59c8392ae7071bffae97d3624d0d9ff0.json"
+    sent_marker.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "record_type": "apel_sent_marker",
+                "message_md5": "59c8392ae7071bffae97d3624d0d9ff0",
+                "day": "2026-04-17",
+                "staged_path": str(staged_file),
+                "outgoing_path": str(tmp_path / "archive" / "apel" / "outgoing" / "59c8392a" / "e7071bffae97d3"),
+                "records": 1,
+                "bytes": 14,
+                "first_pushed_at": "2026-04-21T13:23:04Z",
+                "run_stamp": "20260421T132304Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[apel]",
+                "enabled = true",
+                'submit_host = "submit.example"',
+                'machine_name = "worker.example"',
+                'queue_name = "condor"',
+                'infrastructure_description = "APEL-HTCondor"',
+                'infrastructure_type = "grid"',
+                'service_level_type = "hepscore23"',
+                "service_level_value = 20.0",
+                'staging_dir = "apel/staging"',
+                'outgoing_dir = "apel/outgoing"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["push-apel-daily", "--day", "2026-04-17", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    queue_root = tmp_path / "archive" / "apel" / "outgoing"
+    queue_files = [path for path in queue_root.rglob("*") if path.is_file()] if queue_root.exists() else []
+
+    assert result.exit_code == 0
+    assert "1" in result.stdout
+    assert len(queue_files) == 0
+
+
+def test_push_apel_daily_force_resend_writes_resend_event(tmp_path: Path) -> None:
+    staged_dir = tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17"
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    staged_file = staged_dir / "20260421T132304Z-0001.msg"
+    staged_file.write_text("%%\nSite: TEST\n", encoding="utf-8")
+
+    sent_dir = tmp_path / "archive" / "apel" / "ledger" / "sent"
+    sent_dir.mkdir(parents=True, exist_ok=True)
+    sent_dir.joinpath("59c8392ae7071bffae97d3624d0d9ff0.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "record_type": "apel_sent_marker",
+                "message_md5": "59c8392ae7071bffae97d3624d0d9ff0",
+                "day": "2026-04-17",
+                "staged_path": str(staged_file),
+                "outgoing_path": str(tmp_path / "archive" / "apel" / "outgoing" / "59c8392a" / "e7071bffae97d3"),
+                "records": 1,
+                "bytes": 14,
+                "first_pushed_at": "2026-04-21T13:23:04Z",
+                "run_stamp": "20260421T132304Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[apel]",
+                "enabled = true",
+                'submit_host = "submit.example"',
+                'machine_name = "worker.example"',
+                'queue_name = "condor"',
+                'infrastructure_description = "APEL-HTCondor"',
+                'infrastructure_type = "grid"',
+                'service_level_type = "hepscore23"',
+                "service_level_value = 20.0",
+                'staging_dir = "apel/staging"',
+                'outgoing_dir = "apel/outgoing"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "push-apel-daily",
+            "--day",
+            "2026-04-17",
+            "--config",
+            str(config_path),
+            "--force-resend",
+            "--reason",
+            "operator retry",
+        ],
+        terminal_width=200,
+    )
+
+    resend_dir = tmp_path / "archive" / "apel" / "ledger" / "resends"
+    resend_files = list(resend_dir.glob("*.json"))
+
+    assert result.exit_code == 0
+    assert len(resend_files) == 1
+    payload = json.loads(resend_files[0].read_text(encoding="utf-8"))
+    assert payload["record_type"] == "apel_resend_event"
+    assert payload["reason"] == "operator retry"
+
+
+def test_inspect_apel_ledger_outputs_json(tmp_path: Path) -> None:
+    sent_dir = tmp_path / "archive" / "apel" / "ledger" / "sent"
+    sent_dir.mkdir(parents=True, exist_ok=True)
+    sent_dir.joinpath("abc123.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "record_type": "apel_sent_marker",
+                "message_md5": "abc123",
+                "day": "2026-04-17",
+                "staged_path": "archive/apel/staging/2026/04/17/sample.msg",
+                "outgoing_path": "archive/apel/outgoing/abc12345/6789abcdef0123",
+                "records": 2,
+                "bytes": 100,
+                "first_pushed_at": "2026-04-21T13:23:04Z",
+                "run_stamp": "20260421T132304Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["inspect-apel-ledger", "--day", "2026-04-17", "--format", "json", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) == 1
+    assert payload[0]["message_md5"] == "abc123"
+    assert payload[0]["records"] == 2
 
 
 def test_show_config_with_explicit_file(tmp_path: Path) -> None:
