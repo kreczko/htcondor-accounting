@@ -43,6 +43,9 @@ def _parse_local_job_id(global_job_id: str | None) -> str:
 
 
 def _format_fqan(record: dict[str, Any]) -> str:
+    if record.get("fqan"):
+        return str(record["fqan"])
+
     vo_group = record.get("vo_group")
     vo = record.get("vo")
     vo_role = record.get("vo_role")
@@ -55,7 +58,7 @@ def _format_fqan(record: dict[str, Any]) -> str:
         fqan = ""
 
     if vo_role:
-        fqan = f"{fqan}/Role={vo_role}"
+        fqan = f"{fqan}/{vo_role}/Capability=NULL"
 
     return fqan or "-"
 
