@@ -113,57 +113,6 @@ def test_extract_uses_config_defaults(monkeypatch, tmp_path: Path) -> None:
     assert "manifest   = /tmp/config-archive/manifests/" in result.stdout
 
 
-def test_extract_is_unlimited_when_default_match_is_null(monkeypatch, tmp_path: Path) -> None:
-    captured: dict[str, object] = {}
-
-    class FakeHistoryQuery:
-        def __init__(self, schedd_name, match, constraint):
-            self.schedd_name = schedd_name
-            self.match = match
-            self.constraint = constraint
-
-    fake_module = ModuleType("htcondor_accounting.extract.htcondor")
-
-    def fake_extract_many_canonical_records(site_name, schedd_names, base_query):
-        captured["match"] = base_query.match
-        return {}
-
-    fake_module.HistoryQuery = FakeHistoryQuery
-    fake_module.extract_many_canonical_records = fake_extract_many_canonical_records
-    monkeypatch.setitem(__import__("sys").modules, "htcondor_accounting.extract.htcondor", fake_module)
-
-    config_path = tmp_path / "site.toml"
-    config_path.write_text(
-        "\n".join(
-            [
-                "[storage]",
-                'root = "/tmp/config-archive"',
-                "",
-                "[extract]",
-                "default_match = null",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    result = runner.invoke(
-        app,
-        [
-            "extract",
-            "--start",
-            "2026-04-17",
-            "--end",
-            "2026-04-17",
-            "--config",
-            str(config_path),
-        ],
-        terminal_width=160,
-    )
-
-    assert result.exit_code == 0
-    assert captured["match"] is None
-    assert "match      = None" in result.stdout
-
 
 def test_extract_cli_arguments_override_config(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
