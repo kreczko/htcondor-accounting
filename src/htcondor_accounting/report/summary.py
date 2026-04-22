@@ -6,7 +6,13 @@ from htcondor_accounting.models.reporting import MonthlyReportSummary
 from htcondor_accounting.util.dates import month_label
 
 
-def build_monthly_report_summary(year: int, month: int, jobs: list[dict[str, Any]]) -> MonthlyReportSummary:
+def build_monthly_report_summary(
+    year: int,
+    month: int,
+    jobs: list[dict[str, Any]],
+    *,
+    schedd: str | None = None,
+) -> MonthlyReportSummary:
     days_included = len({str(job.get("day")) for job in jobs if job.get("day")})
     wall_seconds = sum(int(job.get("wall_seconds") or 0) for job in jobs)
     cpu_user_seconds = sum(int(job.get("cpu_user_seconds") or 0) for job in jobs)
@@ -27,6 +33,7 @@ def build_monthly_report_summary(year: int, month: int, jobs: list[dict[str, Any
         year=year,
         month=month,
         period=month_label(year, month),
+        schedd=schedd,
         days_included=days_included,
         jobs_total=len(jobs),
         wall_seconds=wall_seconds,

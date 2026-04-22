@@ -29,6 +29,16 @@ def load_monthly_jobs(output_root: Path, year: int, month: int) -> list[dict[str
     return list(iter_monthly_jobs(output_root, year, month))
 
 
+def filter_jobs_by_schedd(jobs: Iterable[dict[str, Any]], schedd_name: str) -> list[dict[str, Any]]:
+    return [job for job in jobs if _display_value(job.get("source_schedd")) == schedd_name]
+
+
+def monthly_schedd_names(jobs: Iterable[dict[str, Any]]) -> list[str]:
+    names = {_display_value(job.get("source_schedd")) for job in jobs}
+    names.discard("-")
+    return sorted(names)
+
+
 def _safe_int(value: Any, default: int = 0) -> int:
     if value is None:
         return default

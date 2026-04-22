@@ -23,6 +23,12 @@ from htcondor_accounting.store.layout import (
     reports_monthly_accounting_groups_csv_path,
     reports_monthly_dir,
     reports_monthly_index_path,
+    reports_monthly_schedd_accounting_groups_csv_path,
+    reports_monthly_schedd_dir,
+    reports_monthly_schedd_index_path,
+    reports_monthly_schedd_summary_path,
+    reports_monthly_schedd_users_csv_path,
+    reports_monthly_schedd_vos_csv_path,
     reports_monthly_summary_path,
     reports_monthly_users_csv_path,
     reports_monthly_vos_csv_path,
@@ -81,6 +87,12 @@ def test_reports_monthly_layout_paths() -> None:
     assert reports_monthly_vos_csv_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/vos.csv")
     assert reports_monthly_summary_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/summary.json")
     assert reports_monthly_index_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/index.html")
+    assert reports_monthly_schedd_dir(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example")
+    assert reports_monthly_schedd_users_csv_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/users.csv")
+    assert reports_monthly_schedd_vos_csv_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/vos.csv")
+    assert reports_monthly_schedd_accounting_groups_csv_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/accounting_groups.csv")
+    assert reports_monthly_schedd_summary_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/summary.json")
+    assert reports_monthly_schedd_index_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/index.html")
 
 
 def test_apel_layout_paths() -> None:

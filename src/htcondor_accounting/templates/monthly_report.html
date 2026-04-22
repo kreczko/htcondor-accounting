@@ -2,6 +2,9 @@
 
 {% block content %}
   <h1>{{ title }}</h1>
+  {% if parent_index_link %}
+    <p><a href="{{ parent_index_link }}">Back to monthly overview</a></p>
+  {% endif %}
   <div class="summary-grid">
     {% for item in summary_items %}
       <div class="summary-item">
@@ -11,6 +14,19 @@
     {% endfor %}
   </div>
   <p class="note">{{ scaling_note }}</p>
+
+  {% if schedd_links %}
+    <section class="report-section">
+      <div class="section-header">
+        <h2>Schedd reports</h2>
+      </div>
+      <ul>
+        {% for item in schedd_links %}
+          <li><a href="{{ item.href }}">{{ item.label }}</a>{% if item.jobs %} ({{ item.jobs }} jobs){% endif %}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
 
   {% for section in sections %}
     <section class="report-section">

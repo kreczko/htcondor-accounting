@@ -65,6 +65,8 @@ This writes:
 - `archive/reports/monthly/2026/04/accounting_groups.csv`
 - `archive/reports/monthly/2026/04/summary.json`
 - `archive/reports/monthly/2026/04/index.html`
+- `archive/reports/monthly/2026/04/schedds/<schedd>/index.html`
 
 `users.csv` now includes a resolved `vo` column, `vos.csv` includes a distinct `users` count, and `accounting_groups.csv` provides an internal accounting-group cross-check view.
 The monthly HTML page is rendered from Jinja templates in `src/htcondor_accounting/templates/`, uses relative links, and keeps presentation logic separate from Python data preparation.
+Per-schedd monthly pages are generated alongside the top-level month report and link back to the parent overview with relative paths.

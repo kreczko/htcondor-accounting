@@ -11,11 +11,13 @@ from htcondor_accounting.render.html import (
     render_monthly_report_html,
 )
 from htcondor_accounting.report.jobs import (
+    filter_jobs_by_schedd,
     group_jobs_by_accounting_group,
     group_jobs_by_user,
     group_jobs_by_vo,
     iter_monthly_job_paths,
     load_monthly_jobs,
+    monthly_schedd_names,
 )
 from htcondor_accounting.report.summary import build_monthly_report_summary
 from htcondor_accounting.store.jsonl import write_jsonl_zst
@@ -161,6 +163,23 @@ def test_accounting_group_projection_is_deterministic(tmp_path: Path) -> None:
     assert group_d.avg_processors == 8.0
     assert group_d.max_processors == 8
     assert group_d.memory_real_kb_max == 500
+
+
+def test_monthly_jobs_can_be_filtered_by_schedd(tmp_path: Path) -> None:
+    _write_daily_jobs(
+        tmp_path,
+        "2026-04-17",
+        [
+            _job("job-1", day="2026-04-17", user="alice", vo="atlas", wall_seconds=10, cpu_user_seconds=4, cpu_sys_seconds=1, processors=1, memory_real_kb=100, memory_virtual_kb=300, schedd="schedd-a.example"),
+            _job("job-2", day="2026-04-17", user="bob", vo="cms", wall_seconds=20, cpu_user_seconds=6, cpu_sys_seconds=2, processors=2, memory_real_kb=200, memory_virtual_kb=400, schedd="schedd-b.example"),
+        ],
+    )
+    jobs = load_monthly_jobs(tmp_path, 2026, 4)
+
+    assert monthly_schedd_names(jobs) == ["schedd-a.example", "schedd-b.example"]
+    filtered = filter_jobs_by_schedd(jobs, "schedd-b.example")
+    assert len(filtered) == 1
+    assert filtered[0]["source_schedd"] == "schedd-b.example"
 
 
 def test_monthly_summary_aggregates_totals_and_max_memory(tmp_path: Path) -> None:
@@ -319,12 +338,14 @@ def test_jinja_context_builds_sections_and_relative_links() -> None:
         [],
         benchmark_type="hepscore23",
         benchmark_baseline=20.0,
+        schedd_links=[{"label": "schedd-a.example", "href": "schedds/schedd-a.example/index.html", "jobs": "2"}],
     )
 
     assert context["title"] == "HTCondor Accounting Monthly Report 2026-04"
     assert context["sections"][0]["csv_href"] == "users.csv"
     assert context["sections"][1]["csv_href"] == "vos.csv"
     assert context["sections"][2]["csv_href"] == "accounting_groups.csv"
+    assert context["schedd_links"][0]["href"] == "schedds/schedd-a.example/index.html"
     assert "configured hepscore23 baseline of 20" in context["scaling_note"]
 
 

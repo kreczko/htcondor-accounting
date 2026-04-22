@@ -85,6 +85,9 @@ def build_monthly_report_context(
     *,
     benchmark_type: str,
     benchmark_baseline: float,
+    schedd_name: str | None = None,
+    parent_index_link: str | None = None,
+    schedd_links: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     scaling_note = (
         f"Scaled values are adjusted relative to the configured {benchmark_type} baseline of "
@@ -93,10 +96,18 @@ def build_monthly_report_context(
     )
 
     return {
-        "title": f"HTCondor Accounting Monthly Report {summary.period}",
+        "title": (
+            f"HTCondor Accounting Monthly Report {summary.period} - {schedd_name}"
+            if schedd_name
+            else f"HTCondor Accounting Monthly Report {summary.period}"
+        ),
         "month_label": summary.period,
+        "schedd_name": schedd_name,
+        "parent_index_link": parent_index_link,
+        "schedd_links": schedd_links or [],
         "summary_items": [
             {"label": "Month", "value": summary.period},
+            *([{"label": "Schedd", "value": schedd_name}] if schedd_name else []),
             {"label": "Days Included", "value": str(summary.days_included)},
             {"label": "Total Jobs", "value": str(summary.jobs_total)},
             {"label": "Total Wall Hours", "value": format_hours(summary.wall_seconds)},

@@ -27,6 +27,7 @@ class MonthlyReportSummary(BaseModel):
     year: int
     month: int
     period: str
+    schedd: str | None = None
     days_included: int
     jobs_total: int
     wall_seconds: int

@@ -132,6 +132,36 @@ def reports_monthly_index_path(root: Path, year: int, month: int) -> Path:
     return reports_monthly_dir(root, year, month) / "index.html"
 
 
+def reports_monthly_schedd_dir(root: Path, year: int, month: int, schedd: str) -> Path:
+    """Return the monthly per-schedd report directory path."""
+    return reports_monthly_dir(root, year, month) / "schedds" / schedd
+
+
+def reports_monthly_schedd_users_csv_path(root: Path, year: int, month: int, schedd: str) -> Path:
+    """Return the monthly per-schedd user usage CSV path."""
+    return reports_monthly_schedd_dir(root, year, month, schedd) / "users.csv"
+
+
+def reports_monthly_schedd_vos_csv_path(root: Path, year: int, month: int, schedd: str) -> Path:
+    """Return the monthly per-schedd VO usage CSV path."""
+    return reports_monthly_schedd_dir(root, year, month, schedd) / "vos.csv"
+
+
+def reports_monthly_schedd_accounting_groups_csv_path(root: Path, year: int, month: int, schedd: str) -> Path:
+    """Return the monthly per-schedd accounting-group CSV path."""
+    return reports_monthly_schedd_dir(root, year, month, schedd) / "accounting_groups.csv"
+
+
+def reports_monthly_schedd_summary_path(root: Path, year: int, month: int, schedd: str) -> Path:
+    """Return the monthly per-schedd summary JSON path."""
+    return reports_monthly_schedd_dir(root, year, month, schedd) / "summary.json"
+
+
+def reports_monthly_schedd_index_path(root: Path, year: int, month: int, schedd: str) -> Path:
+    """Return the monthly per-schedd report HTML index path."""
+    return reports_monthly_schedd_dir(root, year, month, schedd) / "index.html"
+
+
 def apel_staging_day_dir(root: Path, when: datetime) -> Path:
     """Return the APEL staging daily directory path under the output root."""
     return root / "apel" / "staging" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")

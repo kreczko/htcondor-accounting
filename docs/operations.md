@@ -83,6 +83,12 @@ Outputs are written under:
 output_root/reports/monthly/YYYY/MM/
 ```
 
+Per-schedd monthly pages are also generated under:
+
+```text
+output_root/reports/monthly/YYYY/MM/schedds/<schedd>/
+```
+
 The monthly CSV set currently includes:
 
 - `users.csv` with a resolved `vo` marker per user
@@ -91,6 +97,7 @@ The monthly CSV set currently includes:
 
 The monthly `index.html` page links to those CSVs with relative paths and presents a compact human-readable view using hours and GB for display.
 It is rendered from Jinja templates in `src/htcondor_accounting/templates/`, which keeps the current one-page monthly layout reusable for later per-schedd reporting work.
+The top-level monthly page also links relatively to each available schedd report, and each schedd page links back to the parent monthly overview.
 
 ## Cron Example
 

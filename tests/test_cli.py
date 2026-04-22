@@ -591,6 +591,35 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
                 "scale_factor": 2.0,
                 "benchmark_type": "hepscore23",
                 "source_schedd": "lcgce02.phy.bris.ac.uk",
+                "acct_group": "group-a",
+                "accounting_group": "group-a.main",
+                "day": "2026-04-17",
+            },
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "site_name": "UKI-SOUTHGRID-BRIS-HEP",
+                "global_job_id": "host#2.0#999",
+                "owner": "bob",
+                "local_user": "bob",
+                "vo": "cms",
+                "vo_group": "/cms",
+                "vo_role": None,
+                "auth_method": "scitoken",
+                "start_time": 1776386139,
+                "end_time": 1776428989,
+                "wall_seconds": 20,
+                "cpu_user_seconds": 8,
+                "cpu_sys_seconds": 2,
+                "cpu_total_seconds": 10,
+                "processors": 2,
+                "memory_real_kb": 1500,
+                "memory_virtual_kb": 2500,
+                "scale_factor": 1.0,
+                "benchmark_type": "hepscore23",
+                "source_schedd": "schedd-b.example",
+                "acct_group": "group-b",
+                "accounting_group": "group-b.main",
                 "day": "2026-04-17",
             }
         ],
@@ -627,7 +656,7 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     assert (report_dir / "index.html").exists()
     summary = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["period"] == "2026-04"
-    assert summary["jobs_total"] == 1
+    assert summary["jobs_total"] == 2
     assert (report_dir / "users.csv").read_text(encoding="utf-8").splitlines()[0] == (
         "user,vo,jobs,wall_seconds,cpu_user_seconds,cpu_sys_seconds,cpu_total_seconds,"
         "scaled_wall_seconds,scaled_cpu_seconds,avg_processors,max_processors,memory_real_kb_max,memory_virtual_kb_max"
@@ -642,10 +671,29 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     )
     html = (report_dir / "index.html").read_text(encoding="utf-8")
     assert "Accounting Groups" in html
+    assert "Schedd reports" in html
+    assert "schedds/lcgce02.phy.bris.ac.uk/index.html" in html
+    assert "schedds/schedd-b.example/index.html" in html
     assert 'href="users.csv"' in html or "href='users.csv'" in html
     assert 'href="vos.csv"' in html or "href='vos.csv'" in html
     assert 'href="accounting_groups.csv"' in html or "href='accounting_groups.csv'" in html
     assert "Wall h (scaled)" in html
+
+    schedd_dir = report_dir / "schedds" / "lcgce02.phy.bris.ac.uk"
+    assert (schedd_dir / "users.csv").exists()
+    assert (schedd_dir / "vos.csv").exists()
+    assert (schedd_dir / "accounting_groups.csv").exists()
+    assert (schedd_dir / "summary.json").exists()
+    assert (schedd_dir / "index.html").exists()
+    schedd_summary = json.loads((schedd_dir / "summary.json").read_text(encoding="utf-8"))
+    assert schedd_summary["jobs_total"] == 1
+    assert schedd_summary["schedd"] == "lcgce02.phy.bris.ac.uk"
+    schedd_users_csv = (schedd_dir / "users.csv").read_text(encoding="utf-8")
+    assert "alice" in schedd_users_csv
+    assert "bob" not in schedd_users_csv
+    schedd_html = (schedd_dir / "index.html").read_text(encoding="utf-8")
+    assert "../index.html" in schedd_html
+    assert "Back to monthly overview" in schedd_html
 
 
 def test_push_apel_daily_skips_when_sent_marker_exists(tmp_path: Path) -> None:
