@@ -5,9 +5,15 @@ from pathlib import Path
 from htcondor_accounting.config.models import ApelConfig
 from htcondor_accounting.export.apel_messages import export_apel_daily, pack_apel_messages
 from htcondor_accounting.export.apel_records import apel_record_text
-from htcondor_accounting.export.dirq import dirq_components_from_bytes, promote_staged_message
+from htcondor_accounting.export.dirq import dirq_components_from_bytes, promote_staged_message, read_staged_message_info
+from htcondor_accounting.export.ledger import (
+    parse_run_stamp_from_staged_path,
+    sent_marker_exists,
+    write_resend_marker,
+    write_sent_marker,
+)
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
-from htcondor_accounting.store.layout import RunStamp
+from htcondor_accounting.store.layout import RunStamp, apel_ledger_resends_dir, apel_ledger_sent_marker_path
 
 
 def _derived_job(global_job_id: str, *, local_user: str, vo: str, wall_seconds: int, cpu_total_seconds: int, scale_factor: float | None = 2.0) -> dict:
@@ -147,3 +153,59 @@ def test_promote_staged_message_is_idempotent(tmp_path: Path) -> None:
     assert first.queue_path.exists()
     assert len(first.queue_path.parent.name) == 8
     assert len(first.queue_path.name) == 14
+
+
+def test_sent_marker_written_after_successful_push(tmp_path: Path) -> None:
+    staged = tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17" / "20260421T132304Z-0001.msg"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_text("%%\nSite: TEST\n", encoding="utf-8")
+
+    info = read_staged_message_info(staged)
+    result = promote_staged_message(staged, tmp_path / "outgoing")
+    marker_path = write_sent_marker(
+        tmp_path / "archive",
+        day="2026-04-17",
+        info=info,
+        outgoing_path=result.queue_path,
+        run_stamp=parse_run_stamp_from_staged_path(staged),
+    )
+
+    assert result.queue_path.exists()
+    assert marker_path == apel_ledger_sent_marker_path(tmp_path / "archive", info.message_md5)
+    assert marker_path.exists()
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert marker["record_type"] == "apel_sent_marker"
+    assert marker["message_md5"] == info.message_md5
+    assert marker["records"] == 1
+    assert sent_marker_exists(tmp_path / "archive", info.message_md5) is True
+
+
+def test_resend_event_file_is_created(tmp_path: Path) -> None:
+    staged = tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17" / "20260421T132304Z-0001.msg"
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_text("%%\nSite: TEST\n", encoding="utf-8")
+
+    info = read_staged_message_info(staged)
+    result = promote_staged_message(staged, tmp_path / "outgoing")
+    write_sent_marker(
+        tmp_path / "archive",
+        day="2026-04-17",
+        info=info,
+        outgoing_path=result.queue_path,
+        run_stamp=parse_run_stamp_from_staged_path(staged),
+    )
+
+    resend_path = write_resend_marker(
+        tmp_path / "archive",
+        day="2026-04-17",
+        info=info,
+        outgoing_path=result.queue_path,
+        run_stamp=parse_run_stamp_from_staged_path(staged),
+        reason="operator resend",
+    )
+
+    assert resend_path.exists()
+    assert resend_path.parent == apel_ledger_resends_dir(tmp_path / "archive")
+    payload = json.loads(resend_path.read_text(encoding="utf-8"))
+    assert payload["record_type"] == "apel_resend_event"
+    assert payload["reason"] == "operator resend"
