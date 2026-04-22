@@ -3,6 +3,8 @@ from pathlib import Path
 
 from htcondor_accounting.store.layout import (
     RunStamp,
+    apel_ledger_resend_marker_path,
+    apel_ledger_sent_marker_path,
     apel_manifest_path,
     apel_staging_message_path,
     canonical_day_dir,
@@ -71,6 +73,14 @@ def test_apel_layout_paths() -> None:
 
     assert apel_staging_message_path(root, when, run_stamp, 1) == Path("archive/apel/staging/2026/04/17/20260421T123038Z-0001.msg")
     assert apel_manifest_path(root, when, run_stamp) == Path("archive/apel/manifests/2026/04/17/20260421T123038Z.json")
+    assert apel_ledger_sent_marker_path(root, "64e4a4e4f5bd4854abcd1234abcd1234") == Path(
+        "archive/apel/ledger/sent/64e4a4e4f5bd4854abcd1234abcd1234.json"
+    )
+    assert apel_ledger_resend_marker_path(
+        root,
+        datetime(2026, 4, 21, 12, 30, 38, tzinfo=timezone.utc),
+        "64e4a4e4f5bd4854abcd1234abcd1234",
+    ) == Path("archive/apel/ledger/resends/20260421T123038Z-64e4a4e4f5bd4854abcd1234abcd1234.json")
 
 
 def test_raw_history_layout_paths() -> None:

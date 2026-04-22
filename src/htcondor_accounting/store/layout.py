@@ -117,6 +117,27 @@ def apel_manifest_path(root: Path, when: datetime, run_stamp: RunStamp) -> Path:
     return apel_manifest_day_dir(root, when) / f"{run_stamp.as_filename_component()}.json"
 
 
+def apel_ledger_sent_dir(root: Path) -> Path:
+    """Return the APEL sent-ledger directory."""
+    return root / "apel" / "ledger" / "sent"
+
+
+def apel_ledger_sent_marker_path(root: Path, message_md5: str) -> Path:
+    """Return the sent marker path for a message MD5."""
+    return apel_ledger_sent_dir(root) / f"{message_md5}.json"
+
+
+def apel_ledger_resends_dir(root: Path) -> Path:
+    """Return the APEL resend-ledger directory."""
+    return root / "apel" / "ledger" / "resends"
+
+
+def apel_ledger_resend_marker_path(root: Path, timestamp: datetime, message_md5: str) -> Path:
+    """Return the resend event marker path for a message MD5 and timestamp."""
+    stamp = timestamp.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return apel_ledger_resends_dir(root) / f"{stamp}-{message_md5}.json"
+
+
 def raw_history_day_dir(root: Path, when: datetime) -> Path:
     """Return the raw history snapshot daily directory path."""
     return root / "raw-history" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
