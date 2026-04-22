@@ -6,12 +6,12 @@ from typing import Any, Iterable
 
 import htcondor2 as htcondor
 
+from htcondor_accounting.extract.identity import extract_raw_identity, resolve_reporting_identity
 from htcondor_accounting.models.canonical import (
     AccountingInfo,
     BenchmarkInfo,
     CanonicalJobRecord,
     ExecutionInfo,
-    IdentityInfo,
     JobInfo,
     SourceInfo,
     TimingInfo,
@@ -61,62 +61,6 @@ def ad_float(ad: dict[str, Any], key: str) -> float | None:
         return None
 
 
-def ad_token_groups(ad: dict[str, Any]) -> list[str]:
-    value = ad.get("orig_AuthTokenGroups")
-    if value is None:
-        return []
-
-    if isinstance(value, str):
-        return [group.strip() for group in value.split(",") if group.strip()]
-
-    return []
-
-
-def detect_auth_method(ad: dict[str, Any]) -> str:
-    if ad.get("orig_AuthTokenIssuer") or ad.get("orig_AuthTokenSubject"):
-        return "scitoken"
-    if ad.get("x509UserProxySubject") or ad.get("x509userproxysubject"):
-        return "x509"
-    return "local"
-
-
-def resolve_identity(ad: dict[str, Any]) -> IdentityInfo:
-    token_groups = ad_token_groups(ad)
-    fqan = ad_str(ad, "x509UserProxyFirstFQAN")
-    vo = None
-    vo_group = None
-    vo_role = None
-
-    if fqan:
-        parts = [part for part in fqan.split("/") if part]
-        if parts:
-            vo = parts[0]
-            if len(parts) > 1 and not parts[1].startswith("Role="):
-                vo_group = "/" + "/".join(parts[:2])
-            if "Role=" in fqan:
-                vo_role = fqan.split("Role=", 1)[1].split("/", 1)[0]
-    elif token_groups:
-        first_group = token_groups[0]
-        fqan = first_group
-        parts = [part for part in first_group.split("/") if part]
-        if parts:
-            vo = parts[0]
-            if len(parts) > 1:
-                vo_group = "/" + "/".join(parts[:2])
-
-    return IdentityInfo(
-        dn=ad_str(ad, "x509UserProxySubject") or ad_str(ad, "x509userproxysubject"),
-        fqan=fqan,
-        vo=vo,
-        vo_group=vo_group,
-        vo_role=vo_role,
-        auth_method=detect_auth_method(ad),
-        token_issuer=ad_str(ad, "orig_AuthTokenIssuer"),
-        token_subject=ad_str(ad, "orig_AuthTokenSubject"),
-        token_groups=token_groups,
-    )
-
-
 def canonical_from_ad(
     ad: dict[str, Any],
     site_name: str,
@@ -124,6 +68,16 @@ def canonical_from_ad(
 ) -> CanonicalJobRecord:
     global_job_id = ad_str(ad, "GlobalJobId") or "<missing-global-job-id>"
     owner = ad_str(ad, "Owner") or "<unknown-owner>"
+    accounting = AccountingInfo(
+        acct_group=ad_str(ad, "AcctGroup"),
+        acct_group_user=ad_str(ad, "AcctGroupUser"),
+        accounting_group=ad_str(ad, "AccountingGroup"),
+        route_name=ad_str(ad, "RouteName"),
+        last_match_name=ad_str(ad, "LastMatchName"),
+        last_job_router_name=ad_str(ad, "LastJobRouterName"),
+    )
+    raw_identity = extract_raw_identity(ad)
+    resolved_identity = resolve_reporting_identity(raw_identity, accounting, owner=owner)
 
     return CanonicalJobRecord(
         site_name=site_name,
@@ -151,15 +105,9 @@ def canonical_from_ad(
             end_time=ad_int(ad, "CompletionDate") or ad_int(ad, "EnteredCurrentStatus"),
             status_time=ad_int(ad, "EnteredCurrentStatus"),
         ),
-        identity=resolve_identity(ad),
-        accounting=AccountingInfo(
-            acct_group=ad_str(ad, "AcctGroup"),
-            acct_group_user=ad_str(ad, "AcctGroupUser"),
-            accounting_group=ad_str(ad, "AccountingGroup"),
-            route_name=ad_str(ad, "RouteName"),
-            last_match_name=ad_str(ad, "LastMatchName"),
-            last_job_router_name=ad_str(ad, "LastJobRouterName"),
-        ),
+        identity=raw_identity,
+        accounting=accounting,
+        resolved_identity=resolved_identity,
         benchmark=BenchmarkInfo(
             benchmark_type="hepscore23"
             if ad.get("MachineAttrACCOUNTING_SCALE_FACTOR0") is not None
