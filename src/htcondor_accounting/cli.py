@@ -901,7 +901,14 @@ def render_monthly_command(
     _write_json(summary_path, summary_json_payload(summary))
     ensure_parent_dir(index_path)
     index_path.write_text(
-        render_monthly_report_html(summary, user_rows, vo_rows, schedd_rows),
+        render_monthly_report_html(
+            summary,
+            user_rows,
+            vo_rows,
+            accounting_group_rows,
+            benchmark_type=app_config.benchmark.type,
+            benchmark_baseline=app_config.benchmark.baseline_per_core,
+        ),
         encoding="utf-8",
     )
 

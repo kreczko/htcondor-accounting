@@ -640,6 +640,12 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
         "accounting_group,vo,users,jobs,wall_seconds,cpu_user_seconds,cpu_sys_seconds,cpu_total_seconds,"
         "scaled_wall_seconds,scaled_cpu_seconds,avg_processors,max_processors,memory_real_kb_max,memory_virtual_kb_max"
     )
+    html = (report_dir / "index.html").read_text(encoding="utf-8")
+    assert "Accounting Groups" in html
+    assert "href='users.csv'" in html
+    assert "href='vos.csv'" in html
+    assert "href='accounting_groups.csv'" in html
+    assert "Wall h (scaled)" in html
 
 
 def test_push_apel_daily_skips_when_sent_marker_exists(tmp_path: Path) -> None:

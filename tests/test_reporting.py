@@ -3,7 +3,12 @@ from pathlib import Path
 
 from htcondor_accounting.export.csv import write_csv_rows
 from htcondor_accounting.models.reporting import UsageGroupRow
-from htcondor_accounting.render.html import render_monthly_report_html
+from htcondor_accounting.render.html import (
+    format_gb,
+    format_hours,
+    format_scaled_pair,
+    render_monthly_report_html,
+)
 from htcondor_accounting.report.jobs import (
     group_jobs_by_accounting_group,
     group_jobs_by_user,
@@ -256,12 +261,51 @@ def test_html_render_includes_summary_and_tables(tmp_path: Path) -> None:
             memory_virtual_kb_max=300,
         )
     ]
+    accounting_group_rows = [
+        UsageGroupRow(
+            group_type="accounting_group",
+            group_key="group-a",
+            jobs=1,
+            users=1,
+            vo="atlas",
+            wall_seconds=10,
+            cpu_user_seconds=4,
+            cpu_sys_seconds=1,
+            cpu_total_seconds=5,
+            scaled_wall_seconds=10.0,
+            scaled_cpu_seconds=5.0,
+            avg_processors=1.0,
+            max_processors=1,
+            memory_real_kb_max=100,
+            memory_virtual_kb_max=300,
+        )
+    ]
 
-    html = render_monthly_report_html(summary, user_rows, vo_rows)
+    html = render_monthly_report_html(
+        summary,
+        user_rows,
+        vo_rows,
+        accounting_group_rows,
+        benchmark_type="hepscore23",
+        benchmark_baseline=20.0,
+    )
 
     assert "HTCondor Accounting Monthly Report 2026-04" in html
     assert "Days Included" in html
+    assert "Total Wall Hours" in html
     assert "Users" in html
     assert "VOs" in html
+    assert "Accounting Groups" in html
     assert "alice" in html
     assert "atlas" in html
+    assert "group-a" in html
+    assert 'href=\'users.csv\'' in html
+    assert 'href=\'vos.csv\'' in html
+    assert 'href=\'accounting_groups.csv\'' in html
+    assert "configured hepscore23 baseline of 20" in html
+
+
+def test_html_helpers_format_human_units_and_scaled_pairs() -> None:
+    assert format_hours(7200) == "2.0"
+    assert format_gb(2097152) == "2.0"
+    assert format_scaled_pair(3600, 5400) == "1.0 (1.5)"

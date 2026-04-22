@@ -89,6 +89,8 @@ The monthly CSV set currently includes:
 - `vos.csv` with a distinct `users` count per VO
 - `accounting_groups.csv` for internal accounting-group cross-checking
 
+The monthly `index.html` page links to those CSVs with relative paths and presents a compact human-readable view using hours and GB for display.
+
 ## Cron Example
 
 The script computes yesterday in UTC by default, so cron only needs to pass the output root:
