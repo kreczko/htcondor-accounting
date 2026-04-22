@@ -27,3 +27,25 @@ Show the resolved config:
 ```bash
 pixi run show-config
 ```
+
+## APEL Push Safety
+
+APEL push now uses a file-based ledger under `archive/apel/ledger/` so normal pushes are idempotent by default.
+
+Push one day of staged messages:
+
+```bash
+pixi run htcondor-accounting push-apel-daily --day 2026-04-17
+```
+
+Force an explicit resend and record it in the resend ledger:
+
+```bash
+pixi run htcondor-accounting push-apel-daily --day 2026-04-17 --force-resend
+```
+
+Inspect what has already been pushed:
+
+```bash
+pixi run htcondor-accounting inspect-apel-ledger --day 2026-04-17
+```

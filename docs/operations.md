@@ -21,6 +21,34 @@ HTCondor history is not a permanent store. Taking a raw snapshot first preserves
 
 APEL export should use the deduplicated daily derived jobs as its source of truth. That keeps export aligned with the same cleaned accounting view used for reporting and rollups.
 
+## APEL Push Ledger
+
+APEL push uses a file-based ledger under:
+
+- `output_root/apel/ledger/sent/`
+- `output_root/apel/ledger/resends/`
+
+This is there to stop the same staged message from being pushed more than once by default. The message identity is the MD5 of the final message body, which also matches the dirq-compatible outgoing queue path.
+
+Default behavior:
+
+- if a sent marker already exists for that MD5, the push step skips the message
+- if no sent marker exists, the message is promoted to the outgoing queue and then a sent marker is written
+
+Explicit resend behavior:
+
+- use `--force-resend` to bypass the sent-marker guardrail
+- the original sent marker is kept
+- a resend event is written under `apel/ledger/resends/`
+
+Examples:
+
+```bash
+pixi run htcondor-accounting push-apel-daily --day 2026-04-17
+pixi run htcondor-accounting push-apel-daily --day 2026-04-17 --force-resend
+pixi run htcondor-accounting inspect-apel-ledger --day 2026-04-17
+```
+
 ## Running The Pipeline
 
 Run the whole pipeline for yesterday in UTC:
