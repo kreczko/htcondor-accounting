@@ -81,8 +81,164 @@ def test_owner_heuristic_resolves_cms_pilot() -> None:
     assert resolved.fqan == "/cms/Role=pilot/Capability=NULL"
 
 
+def test_owner_heuristic_resolves_cms_admin_with_sgm_precedence() -> None:
+    resolved = resolve_reporting_identity(
+        extract_raw_identity({}),
+        AccountingInfo(acct_group_user="cmssgm", acct_group="cmspil"),
+        owner="cmssgm",
+    )
+
+    assert resolved.vo == "cms"
+    assert resolved.vo_role == "Role=admin"
+    assert resolved.fqan == "/cms/Role=admin/Capability=NULL"
+
+
 def test_construct_fqan_for_resolved_role() -> None:
     assert construct_fqan("eucliduk.net", "Role=pilot") == "/eucliduk.net/Role=pilot/Capability=NULL"
+
+
+def test_scitoken_identity_plus_pilot_role_constructs_full_fqan() -> None:
+    raw_identity = extract_raw_identity(
+        {
+            "orig_AuthTokenIssuer": "https://issuer.example",
+            "orig_AuthTokenSubject": "subject",
+            "orig_AuthTokenGroups": "/cms",
+        }
+    )
+    resolved = resolve_reporting_identity(
+        raw_identity,
+        AccountingInfo(acct_group_user="cmspil000"),
+        owner="cmspil000",
+    )
+
+    assert resolved.vo == "cms"
+    assert resolved.vo_role == "Role=pilot"
+    assert resolved.fqan == "/cms/Role=pilot/Capability=NULL"
+
+
+def test_scitoken_identity_plus_admin_role_constructs_full_fqan() -> None:
+    raw_identity = extract_raw_identity(
+        {
+            "orig_AuthTokenIssuer": "https://issuer.example",
+            "orig_AuthTokenSubject": "subject",
+            "orig_AuthTokenGroups": "/cms",
+        }
+    )
+    resolved = resolve_reporting_identity(
+        raw_identity,
+        AccountingInfo(acct_group_user="cmssgm"),
+        owner="cmssgm",
+    )
+
+    assert resolved.vo == "cms"
+    assert resolved.vo_role == "Role=admin"
+    assert resolved.fqan == "/cms/Role=admin/Capability=NULL"
+
+
+def test_x509_first_fqan_takes_precedence_over_owner_heuristics() -> None:
+    raw_identity = extract_raw_identity(
+        {
+            "x509UserProxyFirstFQAN": "/lhcb/Role=pilot/Capability=NULL",
+            "x509UserProxyVOName": "lhcb",
+        }
+    )
+    resolved = resolve_reporting_identity(
+        raw_identity,
+        AccountingInfo(acct_group_user="lhcb031"),
+        owner="lhcb031",
+    )
+
+    assert resolved.vo == "lhcb"
+    assert resolved.vo_group == "/lhcb"
+    assert resolved.vo_role == "Role=pilot"
+    assert resolved.fqan == "/lhcb/Role=pilot/Capability=NULL"
+    assert resolved.resolution_method == "x509_first_fqan"
+
+
+def test_orig_x509_first_fqan_takes_precedence_over_owner_heuristics() -> None:
+    raw_identity = extract_raw_identity(
+        {
+            "orig_x509UserProxyFirstFQAN": "/lhcb/Role=pilot/Capability=NULL",
+            "orig_x509UserProxyVOName": "lhcb",
+            "x509UserProxyFirstFQAN": "/lhcb",
+        }
+    )
+    resolved = resolve_reporting_identity(
+        raw_identity,
+        AccountingInfo(acct_group_user="lhcb031"),
+        owner="lhcb031",
+    )
+
+    assert resolved.vo == "lhcb"
+    assert resolved.vo_group == "/lhcb"
+    assert resolved.vo_role == "Role=pilot"
+    assert resolved.fqan == "/lhcb/Role=pilot/Capability=NULL"
+    assert resolved.resolution_method == "orig_x509_first_fqan"
+
+
+def test_orig_x509_vo_name_resolves_vo_and_vogroup() -> None:
+    raw_identity = extract_raw_identity(
+        {
+            "orig_x509UserProxyVOName": "dune",
+        }
+    )
+    resolved = resolve_reporting_identity(raw_identity, AccountingInfo(), owner="alice")
+
+    assert resolved.vo == "dune"
+    assert resolved.vo_group == "/dune"
+    assert resolved.vo_role is None
+    assert resolved.fqan == "/dune"
+    assert resolved.resolution_method == "orig_x509_vo_name"
+
+
+def test_x509_email_resolves_lhcb_pilot_for_older_jobs() -> None:
+    raw_identity = extract_raw_identity({"x509UserProxyEmail": "lb.pilot@cern.ch"})
+    resolved = resolve_reporting_identity(raw_identity, AccountingInfo(), owner="lhcb031")
+
+    assert resolved.vo == "lhcb"
+    assert resolved.vo_group == "/lhcb"
+    assert resolved.vo_role == "Role=pilot"
+    assert resolved.fqan == "/lhcb/Role=pilot/Capability=NULL"
+    assert resolved.resolution_method == "x509_email"
+
+
+def test_x509_subject_resolves_lhcb_pilot_for_older_jobs() -> None:
+    raw_identity = extract_raw_identity({"x509userproxysubject": "/DC=ch/CN=lbpilot"})
+    resolved = resolve_reporting_identity(raw_identity, AccountingInfo(), owner="lhcb031")
+
+    assert resolved.vo == "lhcb"
+    assert resolved.vo_group == "/lhcb"
+    assert resolved.vo_role == "Role=pilot"
+    assert resolved.fqan == "/lhcb/Role=pilot/Capability=NULL"
+    assert resolved.resolution_method == "x509_subject"
+
+
+def test_canonical_from_ad_preserves_forwarded_identity_fields() -> None:
+    record = canonical_from_ad(
+        {
+            "GlobalJobId": "host#123.0#999",
+            "Owner": "alice",
+            "RemoteWallClockTime": 10,
+            "RemoteUserCpu": 6,
+            "RemoteSysCpu": 1,
+            "RequestCpus": 1,
+            "CompletionDate": 1776428989,
+            "EnteredCurrentStatus": 1776428989,
+            "x509UserProxyEmail": "alice@example.org",
+            "orig_x509userproxysubject": "/C=UK/O=eScience/CN=alice",
+            "orig_x509UserProxyFirstFQAN": "/dune/Role=pilot/Capability=NULL",
+            "orig_x509UserProxyVOName": "dune",
+            "orig_x509UserProxyFQAN": "/dune,/dune/Role=pilot/Capability=NULL",
+        },
+        site_name="TEST-SITE",
+        schedd_name="schedd.example",
+    )
+
+    assert record.identity.x509_email == "alice@example.org"
+    assert record.identity.orig_dn == "/C=UK/O=eScience/CN=alice"
+    assert record.identity.orig_fqan == "/dune/Role=pilot/Capability=NULL"
+    assert record.identity.orig_vo_name == "dune"
+    assert record.identity.orig_fqan_list == "/dune,/dune/Role=pilot/Capability=NULL"
 
 
 def test_unresolved_identity_falls_back_cleanly() -> None:
