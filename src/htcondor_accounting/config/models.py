@@ -46,7 +46,7 @@ class ApelConfig(BaseModel):
 
 
 class ReportingConfig(BaseModel):
-    output_dir: Path = Path("./output")
+    output_dir: Path = Path("reports")
     publish_html: bool = True
 
 
