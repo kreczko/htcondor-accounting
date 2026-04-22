@@ -69,6 +69,20 @@ Skip push during testing:
 HTCONDOR_ACCOUNTING_PUSH=0 scripts/run_daily_pipeline.sh /srv/htcondor-accounting 2026-04-17
 ```
 
+## Monthly Reporting
+
+Generate a simple internal monthly report from the deduplicated daily jobs:
+
+```bash
+pixi run htcondor-accounting render-monthly --year 2026 --month 4
+```
+
+Outputs are written under:
+
+```text
+output_root/reports/monthly/YYYY/MM/
+```
+
 ## Cron Example
 
 The script computes yesterday in UTC by default, so cron only needs to pass the output root:

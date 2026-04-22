@@ -49,3 +49,18 @@ Inspect what has already been pushed:
 ```bash
 pixi run htcondor-accounting inspect-apel-ledger --day 2026-04-17
 ```
+
+## Monthly Reports
+
+Render a monthly internal report from derived daily jobs:
+
+```bash
+pixi run htcondor-accounting render-monthly --year 2026 --month 4
+```
+
+This writes:
+
+- `archive/reports/monthly/2026/04/users.csv`
+- `archive/reports/monthly/2026/04/vos.csv`
+- `archive/reports/monthly/2026/04/summary.json`
+- `archive/reports/monthly/2026/04/index.html`
