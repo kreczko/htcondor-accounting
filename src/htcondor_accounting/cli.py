@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from htcondor_accounting.config.load import load_config, resolve_config_path
+from htcondor_accounting.export.csv import write_csv_rows
 from htcondor_accounting.export.apel_messages import export_apel_daily, staged_apel_files
 from htcondor_accounting.export.dirq import promote_staged_message, read_staged_message_info
 from htcondor_accounting.export.ledger import (
@@ -23,7 +24,9 @@ from htcondor_accounting.export.ledger import (
 )
 from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
+from htcondor_accounting.render.html import render_monthly_report_html
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
+from htcondor_accounting.report.jobs import group_jobs_by_schedd, group_jobs_by_user, group_jobs_by_vo, load_monthly_jobs
 from htcondor_accounting.report.rollup import (
     RollupResult,
     derive_all_rollups,
@@ -32,6 +35,7 @@ from htcondor_accounting.report.rollup import (
     derive_weekly,
     derive_yearly,
 )
+from htcondor_accounting.report.summary import build_monthly_report_summary, summary_json_payload
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import (
     RunStamp,
@@ -41,6 +45,11 @@ from htcondor_accounting.store.layout import (
     ensure_parent_dir,
     manifest_file,
     raw_history_run_file,
+    reports_monthly_index_path,
+    reports_monthly_schedds_csv_path,
+    reports_monthly_summary_path,
+    reports_monthly_users_csv_path,
+    reports_monthly_vos_csv_path,
 )
 from htcondor_accounting.version import __version__
 
@@ -114,6 +123,12 @@ def _resolved_outgoing_root(output_root: Path, outgoing_dir: Path) -> Path:
     if outgoing_dir.is_absolute():
         return outgoing_dir
     return output_root / outgoing_dir
+
+
+def _resolved_reporting_root(output_root: Path, reporting_dir: Path) -> Path:
+    if reporting_dir.is_absolute():
+        return reporting_dir
+    return output_root / reporting_dir
 
 
 def _rollup_table(title: str, result: RollupResult) -> Table:
@@ -769,6 +784,70 @@ def derive_daily_command(
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
     console.print(summary)
+
+
+@app.command("render-monthly")
+def render_monthly_command(
+    year: int = typer.Option(..., help="Year, e.g. 2026"),
+    month: int = typer.Option(..., help="Month number, e.g. 4"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived and report data"),
+    include_schedds: bool = typer.Option(False, help="Also generate a schedd-grouped CSV"),
+) -> None:
+    """Render one monthly internal report from derived daily jobs."""
+    app_config = load_config(config)
+    resolved_output_root = output_root or app_config.storage.root
+
+    jobs = load_monthly_jobs(resolved_output_root, year, month)
+    user_rows = group_jobs_by_user(jobs)
+    vo_rows = group_jobs_by_vo(jobs)
+    schedd_rows = group_jobs_by_schedd(jobs) if include_schedds else None
+    summary = build_monthly_report_summary(year, month, jobs)
+
+    fieldnames = [
+        "group_type",
+        "group_key",
+        "jobs",
+        "wall_seconds",
+        "cpu_user_seconds",
+        "cpu_sys_seconds",
+        "cpu_total_seconds",
+        "scaled_wall_seconds",
+        "scaled_cpu_seconds",
+        "processors_total",
+        "memory_real_kb_max",
+        "memory_virtual_kb_max",
+        "memory_real_kb_avg",
+        "memory_virtual_kb_avg",
+    ]
+    users_csv_path = reports_monthly_users_csv_path(resolved_output_root, year, month)
+    vos_csv_path = reports_monthly_vos_csv_path(resolved_output_root, year, month)
+    summary_path = reports_monthly_summary_path(resolved_output_root, year, month)
+    index_path = reports_monthly_index_path(resolved_output_root, year, month)
+
+    write_csv_rows(users_csv_path, user_rows, fieldnames)
+    write_csv_rows(vos_csv_path, vo_rows, fieldnames)
+    if include_schedds:
+        write_csv_rows(reports_monthly_schedds_csv_path(resolved_output_root, year, month), schedd_rows or [], fieldnames)
+    _write_json(summary_path, summary_json_payload(summary))
+    ensure_parent_dir(index_path)
+    index_path.write_text(
+        render_monthly_report_html(summary, user_rows, vo_rows, schedd_rows),
+        encoding="utf-8",
+    )
+
+    summary_table = Table(title="Monthly report")
+    summary_table.add_column("Field")
+    summary_table.add_column("Value")
+    summary_table.add_row("Period", f"{year:04d}-{month:02d}")
+    summary_table.add_row("Jobs", str(summary.jobs_total))
+    summary_table.add_row("Days included", str(summary.days_included))
+    summary_table.add_row("Output directory", str(index_path.parent))
+
+    console.print("[bold]Render Monthly[/bold]")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(summary_table)
 
 
 @app.command("export-apel-daily")

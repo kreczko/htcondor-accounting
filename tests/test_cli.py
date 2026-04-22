@@ -559,6 +559,72 @@ def test_push_apel_daily_promotes_messages_into_dirq_queue(tmp_path: Path) -> No
     assert len(queue_files[0].name) == 14
 
 
+def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> None:
+    jobs_path = tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "17" / "jobs.jsonl.zst"
+    write_jsonl_zst(
+        jobs_path,
+        [
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "site_name": "UKI-SOUTHGRID-BRIS-HEP",
+                "global_job_id": "host#1.0#999",
+                "owner": "alice",
+                "local_user": "alice",
+                "vo": "atlas",
+                "vo_group": "/atlas",
+                "vo_role": None,
+                "auth_method": "scitoken",
+                "start_time": 1776386139,
+                "end_time": 1776428989,
+                "wall_seconds": 10,
+                "cpu_user_seconds": 6,
+                "cpu_sys_seconds": 1,
+                "cpu_total_seconds": 7,
+                "processors": 1,
+                "memory_real_kb": 1000,
+                "memory_virtual_kb": 2000,
+                "scale_factor": 2.0,
+                "benchmark_type": "hepscore23",
+                "source_schedd": "lcgce02.phy.bris.ac.uk",
+                "day": "2026-04-17",
+            }
+        ],
+    )
+
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[reporting]",
+                'output_dir = "reports"',
+                "publish_html = true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["render-monthly", "--year", "2026", "--month", "4", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    report_dir = tmp_path / "archive" / "reports" / "monthly" / "2026" / "04"
+    assert result.exit_code == 0
+    assert "Render Monthly" in result.stdout
+    assert (report_dir / "users.csv").exists()
+    assert (report_dir / "vos.csv").exists()
+    assert (report_dir / "summary.json").exists()
+    assert (report_dir / "index.html").exists()
+    summary = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["period"] == "2026-04"
+    assert summary["jobs_total"] == 1
+
+
 def test_push_apel_daily_skips_when_sent_marker_exists(tmp_path: Path) -> None:
     staged_dir = tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17"
     staged_dir.mkdir(parents=True, exist_ok=True)
