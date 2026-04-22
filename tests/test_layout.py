@@ -20,6 +20,11 @@ from htcondor_accounting.store.layout import (
     manifest_day_dir,
     manifest_file,
     raw_history_run_file,
+    reports_monthly_dir,
+    reports_monthly_index_path,
+    reports_monthly_summary_path,
+    reports_monthly_users_csv_path,
+    reports_monthly_vos_csv_path,
 )
 
 def test_canonical_day_dir() -> None:
@@ -64,6 +69,16 @@ def test_rollup_layout_paths() -> None:
     assert derived_monthly_summary_path(root, 2026, 4) == Path("archive/derived/monthly/2026/04/summary.json")
     assert derived_yearly_summary_path(root, 2026) == Path("archive/derived/yearly/2026/summary.json")
     assert derived_all_time_summary_path(root) == Path("archive/derived/all-time/summary.json")
+
+
+def test_reports_monthly_layout_paths() -> None:
+    root = Path("archive")
+
+    assert reports_monthly_dir(root, 2026, 4) == Path("archive/reports/monthly/2026/04")
+    assert reports_monthly_users_csv_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/users.csv")
+    assert reports_monthly_vos_csv_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/vos.csv")
+    assert reports_monthly_summary_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/summary.json")
+    assert reports_monthly_index_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/index.html")
 
 
 def test_apel_layout_paths() -> None:

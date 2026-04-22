@@ -97,6 +97,36 @@ def derived_all_time_summary_path(root: Path) -> Path:
     return derived_all_time_dir(root) / "summary.json"
 
 
+def reports_monthly_dir(root: Path, year: int, month: int) -> Path:
+    """Return the internal monthly reports directory path."""
+    return root / "reports" / "monthly" / f"{year:04d}" / f"{month:02d}"
+
+
+def reports_monthly_users_csv_path(root: Path, year: int, month: int) -> Path:
+    """Return the monthly user usage CSV path."""
+    return reports_monthly_dir(root, year, month) / "users.csv"
+
+
+def reports_monthly_vos_csv_path(root: Path, year: int, month: int) -> Path:
+    """Return the monthly VO usage CSV path."""
+    return reports_monthly_dir(root, year, month) / "vos.csv"
+
+
+def reports_monthly_schedds_csv_path(root: Path, year: int, month: int) -> Path:
+    """Return the monthly schedd usage CSV path."""
+    return reports_monthly_dir(root, year, month) / "schedds.csv"
+
+
+def reports_monthly_summary_path(root: Path, year: int, month: int) -> Path:
+    """Return the monthly reporting summary JSON path."""
+    return reports_monthly_dir(root, year, month) / "summary.json"
+
+
+def reports_monthly_index_path(root: Path, year: int, month: int) -> Path:
+    """Return the monthly report HTML index path."""
+    return reports_monthly_dir(root, year, month) / "index.html"
+
+
 def apel_staging_day_dir(root: Path, when: datetime) -> Path:
     """Return the APEL staging daily directory path under the output root."""
     return root / "apel" / "staging" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
