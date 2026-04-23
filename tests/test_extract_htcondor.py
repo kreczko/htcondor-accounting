@@ -213,6 +213,100 @@ def test_x509_subject_resolves_lhcb_pilot_for_older_jobs() -> None:
     assert resolved.resolution_method == "x509_subject"
 
 
+def test_route_name_gridpp_resolves_with_existing_pilot_role() -> None:
+    resolved = resolve_reporting_identity(
+        extract_raw_identity(
+            {
+                "orig_AuthTokenIssuer": "https://issuer.example",
+                "orig_AuthTokenSubject": "subject",
+                "x509userproxysubject": "/C=UK/O=eScience/CN=dirac-pilot.grid.hep.ph.ic.ac.uk",
+            }
+        ),
+        AccountingInfo(route_name="gridpp"),
+        owner="gridpp001",
+    )
+
+    assert resolved.vo == "gridpp"
+    assert resolved.vo_group == "/gridpp"
+    assert resolved.vo_role == "Role=pilot"
+    assert resolved.fqan == "/gridpp/Role=pilot/Capability=NULL"
+    assert resolved.resolution_method == "route_name"
+    assert resolved.resolution_evidence == "gridpp"
+
+
+def test_route_name_gridpp_resolves_without_role() -> None:
+    resolved = resolve_reporting_identity(
+        extract_raw_identity(
+            {
+                "orig_AuthTokenIssuer": "https://issuer.example",
+                "orig_AuthTokenSubject": "subject",
+            }
+        ),
+        AccountingInfo(route_name="gridpp"),
+        owner="alice",
+    )
+
+    assert resolved.vo == "gridpp"
+    assert resolved.vo_group == "/gridpp"
+    assert resolved.vo_role is None
+    assert resolved.fqan == "/gridpp"
+    assert resolved.resolution_method == "route_name"
+    assert resolved.resolution_evidence == "gridpp"
+
+
+def test_route_name_gridpp_does_not_override_token_group_vo() -> None:
+    resolved = resolve_reporting_identity(
+        extract_raw_identity(
+            {
+                "orig_AuthTokenIssuer": "https://issuer.example",
+                "orig_AuthTokenSubject": "subject",
+                "orig_AuthTokenGroups": "/cms",
+            }
+        ),
+        AccountingInfo(route_name="gridpp"),
+        owner="cmspil000",
+    )
+
+    assert resolved.vo == "cms"
+    assert resolved.fqan == "/cms/Role=pilot/Capability=NULL"
+    assert resolved.resolution_method == "token_groups"
+
+
+def test_route_name_gridpp_does_not_override_explicit_fqan() -> None:
+    resolved = resolve_reporting_identity(
+        extract_raw_identity(
+            {
+                "x509UserProxyFirstFQAN": "/lhcb/Role=pilot/Capability=NULL",
+                "orig_AuthTokenIssuer": "https://issuer.example",
+                "orig_AuthTokenSubject": "subject",
+            }
+        ),
+        AccountingInfo(route_name="gridpp"),
+        owner="gridpp001",
+    )
+
+    assert resolved.vo == "lhcb"
+    assert resolved.fqan == "/lhcb/Role=pilot/Capability=NULL"
+    assert resolved.resolution_method == "x509_first_fqan"
+
+
+def test_unrelated_route_names_are_not_auto_mapped() -> None:
+    resolved = resolve_reporting_identity(
+        extract_raw_identity(
+            {
+                "orig_AuthTokenIssuer": "https://issuer.example",
+                "orig_AuthTokenSubject": "subject",
+            }
+        ),
+        AccountingInfo(route_name="mystery-route"),
+        owner="user123",
+    )
+
+    assert resolved.vo is None
+    assert resolved.fqan is None
+    assert resolved.resolution_method == "unresolved"
+
+
 def test_canonical_from_ad_preserves_forwarded_identity_fields() -> None:
     record = canonical_from_ad(
         {

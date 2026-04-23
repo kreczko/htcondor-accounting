@@ -169,6 +169,24 @@ def _resolve_from_vo_name(value: str | None, method: str) -> ResolvedIdentityInf
     return _build_resolved(value, None, method, value, fqan=construct_fqan(value, None))
 
 
+def _resolve_from_route_name_special_case(
+    accounting: AccountingInfo,
+    role: str | None,
+) -> ResolvedIdentityInfo | None:
+    # Keep route-name VO resolution deliberately narrow for now. This mapping
+    # should only include explicit, reviewed site-local routing cases.
+    route_name_map = {
+        "gridpp": "gridpp",
+    }
+    route_name = accounting.route_name
+    if not route_name:
+        return None
+    vo = route_name_map.get(route_name)
+    if not vo:
+        return None
+    return _build_resolved(vo, role, "route_name", route_name, fqan=construct_fqan(vo, role))
+
+
 def _resolve_from_email(value: str | None) -> ResolvedIdentityInfo | None:
     if not value:
         return None
@@ -240,16 +258,17 @@ def resolve_reporting_identity(
     accounting: AccountingInfo,
     owner: str | None = None,
 ) -> ResolvedIdentityInfo:
+    fallback_role = _fallback_role(raw_identity, accounting, owner)
     resolvers: list[Callable[[], ResolvedIdentityInfo | None]] = [
         lambda: _resolve_from_fqan_value(raw_identity.orig_fqan, "orig_x509_first_fqan"),
         lambda: _resolve_from_fqan_value(raw_identity.fqan, "x509_first_fqan"),
         lambda: (
             _build_resolved(
                 token_vo,
-                _fallback_role(raw_identity, accounting, owner),
+                fallback_role,
                 "token_groups",
                 token_evidence,
-                fqan=construct_fqan(token_vo, _fallback_role(raw_identity, accounting, owner)),
+                fqan=construct_fqan(token_vo, fallback_role),
             )
             if token_vo
             else None
@@ -257,10 +276,10 @@ def resolve_reporting_identity(
         lambda: (
             _build_resolved(
                 raw_identity.orig_vo_name,
-                _fallback_role(raw_identity, accounting, owner),
+                fallback_role,
                 "orig_x509_vo_name",
                 raw_identity.orig_vo_name,
-                fqan=construct_fqan(raw_identity.orig_vo_name, _fallback_role(raw_identity, accounting, owner)),
+                fqan=construct_fqan(raw_identity.orig_vo_name, fallback_role),
             )
             if raw_identity.orig_vo_name
             else None
@@ -268,23 +287,24 @@ def resolve_reporting_identity(
         lambda: (
             _build_resolved(
                 raw_identity.vo,
-                _fallback_role(raw_identity, accounting, owner),
+                fallback_role,
                 "x509_vo_name",
                 raw_identity.vo,
-                fqan=construct_fqan(raw_identity.vo, _fallback_role(raw_identity, accounting, owner)),
+                fqan=construct_fqan(raw_identity.vo, fallback_role),
             )
             if raw_identity.vo and raw_identity.fqan is None
             else None
         ),
+        lambda: _resolve_from_route_name_special_case(accounting, fallback_role),
         lambda: _resolve_from_email(raw_identity.x509_email),
         lambda: _resolve_from_subject(raw_identity.orig_dn or raw_identity.dn),
         lambda: (
             _build_resolved(
                 accounting_vo,
-                _fallback_role(raw_identity, accounting, owner),
+                fallback_role,
                 accounting_method or "acct_group",
                 accounting_evidence,
-                fqan=construct_fqan(accounting_vo, _fallback_role(raw_identity, accounting, owner)),
+                fqan=construct_fqan(accounting_vo, fallback_role),
             )
             if accounting_vo
             else None
@@ -292,10 +312,10 @@ def resolve_reporting_identity(
         lambda: (
             _build_resolved(
                 owner_vo,
-                _fallback_role(raw_identity, accounting, owner),
+                fallback_role,
                 "owner_heuristic",
                 owner_evidence,
-                fqan=construct_fqan(owner_vo, _fallback_role(raw_identity, accounting, owner)),
+                fqan=construct_fqan(owner_vo, fallback_role),
             )
             if owner_vo
             else None
@@ -311,13 +331,12 @@ def resolve_reporting_identity(
         if resolved is not None:
             return resolved
 
-    role = _fallback_role(raw_identity, accounting, owner)
     return ResolvedIdentityInfo(
         vo=None,
         vo_group=None,
-        vo_role=role,
+        vo_role=fallback_role,
         fqan=None,
         resolution_method="unresolved",
         resolution_evidence=None,
-        is_pilot=role == "Role=pilot" if role else None,
+        is_pilot=fallback_role == "Role=pilot" if fallback_role else None,
     )
