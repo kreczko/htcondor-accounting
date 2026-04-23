@@ -717,7 +717,9 @@ def extract(
 @app.command()
 def inspect(
     path: Path = typer.Argument(..., help="Path to a canonical record file or directory"),
-    limit: int = typer.Option(20, min=1, help="Maximum number of jobs to show"),
+    limit: Optional[int] = typer.Option(None, min=1, help="Maximum number of jobs to show"),
+    offset: int = typer.Option(0, min=0, help="Number of records to skip before showing output"),
+    all: bool = typer.Option(False, "--all", help="Show all matching records"),
     output_format: InspectFormat = typer.Option(
         InspectFormat.table,
         "--format",
@@ -741,6 +743,15 @@ def inspect(
             console.print("[]")
         raise typer.Exit(code=1)
 
+    if all:
+        effective_limit: Optional[int] = None
+    elif limit is not None:
+        effective_limit = limit
+    elif output_format == InspectFormat.table:
+        effective_limit = 100
+    else:
+        effective_limit = None
+
     rows_shown = 0
     total_records = 0
     table = _inspect_table(verbosity) if output_format == InspectFormat.table and verbosity != InspectVerbosity.full else None
@@ -748,7 +759,9 @@ def inspect(
 
     for record in _iter_records(paths):
         total_records += 1
-        if rows_shown >= limit:
+        if total_records <= offset:
+            continue
+        if effective_limit is not None and rows_shown >= effective_limit:
             continue
 
         rendered = _inspect_object(record, verbosity)
@@ -775,8 +788,14 @@ def inspect(
     console.print(f"  path         = {path}")
     console.print(f"  files        = {len(paths)}")
     console.print(f"  total jobs   = {total_records}")
-    console.print(f"  showing jobs = {min(total_records, limit)}")
+    console.print(f"  offset       = {offset}")
+    console.print(f"  showing jobs = {rows_shown}")
+    console.print(f"  limit        = {'all' if effective_limit is None else effective_limit}")
     console.print(f"  verbosity    = {verbosity.value}")
+    if offset > 0 or rows_shown < max(total_records - offset, 0):
+        console.print("  subset       = yes")
+    else:
+        console.print("  subset       = no")
 
     if verbosity == InspectVerbosity.full:
         for index, record in enumerate(rendered_records, start=1):

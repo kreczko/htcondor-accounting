@@ -931,6 +931,7 @@ def test_inspect_least_verbosity_shows_compact_columns(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "verbosity    = least" in result.stdout
     assert "total jobs   = 2" in result.stdout
+    assert "offset       = 0" in result.stdout
     assert "Schedd" in result.stdout
     assert "Start Date" in result.stdout
     assert "End Date" in result.stdout
@@ -941,6 +942,7 @@ def test_inspect_least_verbosity_shows_compact_columns(tmp_path: Path) -> None:
     assert "00:35:39" in result.stdout
     assert "12:29:49" in result.stdout
     assert "Wallclock" not in result.stdout
+    assert "subset       = no" in result.stdout
 
 
 def test_inspect_json_format_outputs_clean_json_array(tmp_path: Path) -> None:
@@ -1035,6 +1037,84 @@ def test_inspect_directory_respects_limit(tmp_path: Path) -> None:
     assert "files        = 2" in result.stdout
     assert "total jobs   = 2" in result.stdout
     assert "showing jobs = 1" in result.stdout
+    assert "limit        = 1" in result.stdout
+    assert "subset       = yes" in result.stdout
+
+
+def test_inspect_json_outputs_all_records_by_default(tmp_path: Path) -> None:
+    output_path = tmp_path / "sample.jsonl.zst"
+    write_jsonl_zst(
+        output_path,
+        [
+            _record("lcgce02.phy.bris.ac.uk#684860.0#1776420670", "alice", "atlas", 1.23456),
+            _record("lcgce02.phy.bris.ac.uk#684861.0#1776420671", "bob", "cms", 1.0),
+            _record("lcgce02.phy.bris.ac.uk#684862.0#1776420672", "carol", None, None),
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        ["inspect", str(output_path), "--format", "json"],
+        terminal_width=160,
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) == 3
+
+
+def test_inspect_offset_pages_table_output(tmp_path: Path) -> None:
+    output_path = tmp_path / "sample.jsonl.zst"
+    write_jsonl_zst(
+        output_path,
+        [
+            _record("lcgce02.phy.bris.ac.uk#684860.0#1776420670", "alice", "atlas", 1.0),
+            _record("lcgce02.phy.bris.ac.uk#684861.0#1776420671", "bob", "cms", 1.0),
+            _record("lcgce02.phy.bris.ac.uk#684862.0#1776420672", "carol", None, None),
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        ["inspect", str(output_path), "--offset", "1", "--limit", "1"],
+        terminal_width=180,
+    )
+
+    assert result.exit_code == 0
+    assert "total jobs   = 3" in result.stdout
+    assert "offset       = 1" in result.stdout
+    assert "showing jobs = 1" in result.stdout
+    assert "limit        = 1" in result.stdout
+    assert "subset       = yes" in result.stdout
+    assert "alice" not in result.stdout
+    assert "bob" in result.stdout
+    assert "carol" not in result.stdout
+
+
+def test_inspect_all_overrides_table_default_limit(tmp_path: Path) -> None:
+    output_path = tmp_path / "sample.jsonl.zst"
+    write_jsonl_zst(
+        output_path,
+        [
+            _record("lcgce02.phy.bris.ac.uk#684860.0#1776420670", "alice", "atlas", 1.0),
+            _record("lcgce02.phy.bris.ac.uk#684861.0#1776420671", "bob", "cms", 1.0),
+            _record("lcgce02.phy.bris.ac.uk#684862.0#1776420672", "carol", None, None),
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        ["inspect", str(output_path), "--all"],
+        terminal_width=180,
+    )
+
+    assert result.exit_code == 0
+    assert "showing jobs = 3" in result.stdout
+    assert "limit        = all" in result.stdout
+    assert "subset       = no" in result.stdout
+    assert "alice" in result.stdout
+    assert "bob" in result.stdout
+    assert "carol" in result.stdout
 
 
 def test_inspect_table_shows_nested_canonical_record_with_missing_vo(tmp_path: Path) -> None:
