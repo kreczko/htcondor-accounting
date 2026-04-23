@@ -1037,6 +1037,191 @@ def test_inspect_directory_respects_limit(tmp_path: Path) -> None:
     assert "showing jobs = 1" in result.stdout
 
 
+def test_inspect_table_shows_nested_canonical_record_with_missing_vo(tmp_path: Path) -> None:
+    output_path = tmp_path / "canonical.jsonl.zst"
+    write_jsonl_zst(
+        output_path,
+        [
+            {
+                "schema_version": 1,
+                "record_type": "job",
+                "site_name": "TEST-SITE",
+                "source": {"schedd": "ce01.example", "collected_at": "2026-04-17T12:00:00Z"},
+                "job": {
+                    "global_job_id": "ce01.example#684862.0#1776420672",
+                    "owner": "gridpp001",
+                    "local_user": "gridpp001",
+                },
+                "timing": {
+                    "start_time": 1776386139,
+                    "end_time": 1776428989,
+                },
+                "identity": {
+                    "auth_method": "local",
+                    "dn": None,
+                    "vo": None,
+                },
+                "resolved_identity": {
+                    "vo": None,
+                    "fqan": None,
+                    "resolution_method": "unresolved",
+                },
+                "benchmark": {
+                    "scale_factor": None,
+                },
+            }
+        ],
+    )
+
+    result = runner.invoke(app, ["inspect", str(output_path)], terminal_width=160)
+
+    assert result.exit_code == 0
+    assert "total jobs   = 1" in result.stdout
+    assert "showing jobs = 1" in result.stdout
+    assert "gridpp001" in result.stdout
+    assert "ce01.example" in result.stdout
+
+
+def test_inspect_table_includes_unresolved_gridpp_canonical_record(tmp_path: Path) -> None:
+    output_path = tmp_path / "canonical-gridpp.jsonl.zst"
+    write_jsonl_zst(
+        output_path,
+        [
+            {
+                "accounting": {
+                    "accounting_group": "group_physics.gridpp001",
+                    "acct_group": "group_physics",
+                    "acct_group_user": "gridpp001",
+                    "last_job_router_name": None,
+                    "last_match_name": None,
+                    "route_name": "gridpp",
+                },
+                "benchmark": {
+                    "benchmark_type": "hepscore23",
+                    "node_per_core": None,
+                    "scale_factor": 0.99365,
+                    "site_baseline_per_core": None,
+                },
+                "execution": {
+                    "ce_host": "lcgce02.phy.bris.ac.uk",
+                    "ce_id": None,
+                    "execute_node": "slot1_26@hd74.dice.priv",
+                    "slot_name": None,
+                },
+                "identity": {
+                    "auth_method": "scitoken",
+                    "dn": "/C=UK/O=eScience/OU=Imperial/L=Physics/CN=dirac-pilot.grid.hep.ph.ic.ac.uk",
+                    "fqan": None,
+                    "orig_dn": None,
+                    "orig_fqan": None,
+                    "orig_fqan_list": None,
+                    "orig_vo_name": None,
+                    "token_groups": [],
+                    "token_issuer": "https://iam.grid.hep.ph.ic.ac.uk/",
+                    "token_subject": "d19ac000-1c1c-4444-1c1c-d19ac000001",
+                    "vo": None,
+                    "vo_group": None,
+                    "vo_role": None,
+                    "x509_email": None,
+                },
+                "job": {
+                    "global_job_id": "lcgce02.phy.bris.ac.uk#688459.0#1776741174",
+                    "local_user": "gridpp001",
+                    "owner": "gridpp001",
+                    "routed_from_job_id": "241063.0",
+                },
+                "record_type": "job",
+                "resolved_identity": {
+                    "fqan": None,
+                    "is_pilot": True,
+                    "resolution_evidence": None,
+                    "resolution_method": "unresolved",
+                    "vo": None,
+                    "vo_group": None,
+                    "vo_role": "Role=pilot",
+                },
+                "schema_version": 1,
+                "site_name": "UKI-SOUTHGRID-BRIS-HEP",
+                "source": {
+                    "collected_at": "2026-04-23T08:29:04Z",
+                    "collector_host": None,
+                    "schedd": "lcgce02.phy.bris.ac.uk",
+                    "system": "htcondor",
+                },
+                "timing": {
+                    "end_time": 1776741241,
+                    "queue_time": 1776741174,
+                    "start_time": 1776741175,
+                    "status_time": 1776741241,
+                },
+                "usage": {
+                    "cpu_sys_seconds": 3,
+                    "cpu_user_seconds": 35,
+                    "memory_real_kb": 53896,
+                    "memory_virtual_kb": 169220,
+                    "processors": 1,
+                    "wall_seconds": 66,
+                },
+            }
+        ],
+    )
+
+    result = runner.invoke(app, ["inspect", str(output_path)], terminal_width=200)
+
+    assert result.exit_code == 0
+    assert "total jobs   = 1" in result.stdout
+    assert "showing jobs = 1" in result.stdout
+    assert "gridpp001" in result.stdout
+    assert "0.994" in result.stdout
+
+
+def test_inspect_table_shows_flat_report_record_with_missing_optional_fields(tmp_path: Path) -> None:
+    output_path = tmp_path / "report.jsonl.zst"
+    write_jsonl_zst(
+        output_path,
+        [
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "site_name": "TEST-SITE",
+                "global_job_id": "ce02#2.0#1776420673",
+                "owner": "alice",
+                "local_user": "alice",
+                "vo": "atlas",
+                "start_time": 1776386139,
+                "end_time": 1776428989,
+                "wall_seconds": 123,
+                "source_schedd": "ce02",
+            },
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "site_name": "TEST-SITE",
+                "global_job_id": "ce03#3.0#1776420674",
+                "owner": "bob",
+                "local_user": None,
+                "vo": None,
+                "start_time": None,
+                "end_time": None,
+                "wall_seconds": None,
+                "source_schedd": "ce03",
+            },
+        ],
+    )
+
+    result = runner.invoke(app, ["inspect", str(output_path), "--verbosity", "medium"], terminal_width=180)
+
+    assert result.exit_code == 0
+    assert "total jobs   = 2" in result.stdout
+    assert "showing jobs = 2" in result.stdout
+    assert "ce02" in result.stdout
+    assert "ce03" in result.stdout
+    assert "2.0" in result.stdout
+    assert "3.0" in result.stdout
+    assert "alice" in result.stdout
+    assert "bob" in result.stdout
+
+
 def test_snapshot_history_writes_raw_ads_partitioned_by_day(monkeypatch, tmp_path: Path) -> None:
     class FakeHistoryQuery:
         def __init__(self, schedd_name, match, constraint):

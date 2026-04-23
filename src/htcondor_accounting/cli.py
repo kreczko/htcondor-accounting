@@ -207,6 +207,14 @@ def _field(record: dict[str, Any], *keys: str) -> Any:
     return current
 
 
+def _first_present(record: dict[str, Any], *paths: tuple[str, ...]) -> Any:
+    for path in paths:
+        value = _field(record, *path)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 class InspectVerbosity(str, Enum):
     least = "least"
     medium = "medium"
@@ -281,22 +289,88 @@ def _parse_global_job_id(value: Any) -> dict[str, Any]:
 
 
 def _identity_display(record: dict[str, Any]) -> str:
-    dn = _field(record, "identity", "dn")
+    dn = _first_present(
+        record,
+        ("identity", "dn"),
+        ("identity", "orig_dn"),
+        ("dn",),
+        ("orig_dn",),
+    )
     if dn:
         return str(dn)
 
-    issuer = _field(record, "identity", "token_issuer")
-    subject = _field(record, "identity", "token_subject")
+    issuer = _first_present(record, ("identity", "token_issuer"), ("token_issuer",))
+    subject = _first_present(record, ("identity", "token_subject"), ("token_subject",))
     if issuer or subject:
         return f"issuer={issuer or '-'} subject={subject or '-'}"
 
     return "-"
 
 
+def _inspect_global_job_id(record: dict[str, Any]) -> Any:
+    return _first_present(record, ("job", "global_job_id"), ("global_job_id",))
+
+
+def _inspect_source_schedd(record: dict[str, Any]) -> str:
+    value = _first_present(record, ("source", "schedd"), ("source_schedd",))
+    return str(value) if value not in (None, "") else "-"
+
+
+def _inspect_user(record: dict[str, Any]) -> str:
+    value = _first_present(
+        record,
+        ("job", "local_user"),
+        ("local_user",),
+        ("owner",),
+        ("job", "owner"),
+    )
+    return str(value) if value not in (None, "") else "-"
+
+
+def _inspect_vo(record: dict[str, Any]) -> str:
+    value = _first_present(
+        record,
+        ("resolved_identity", "vo"),
+        ("identity", "vo"),
+        ("vo",),
+    )
+    return str(value) if value not in (None, "") else "-"
+
+
+def _inspect_start_time(record: dict[str, Any], parsed_job: dict[str, Any]) -> Any:
+    value = _first_present(record, ("timing", "start_time"), ("start_time",))
+    if value in (None, ""):
+        return parsed_job["timestamp"]
+    return value
+
+
+def _inspect_end_time(record: dict[str, Any]) -> Any:
+    return _first_present(record, ("timing", "end_time"), ("end_time",))
+
+
+def _inspect_scale_factor(record: dict[str, Any]) -> Any:
+    return _first_present(record, ("benchmark", "scale_factor"), ("scale_factor",))
+
+
+def _inspect_wall_seconds(record: dict[str, Any]) -> Any:
+    return _first_present(record, ("usage", "wall_seconds"), ("wall_seconds",))
+
+
+def _inspect_schedd_job_id(record: dict[str, Any]) -> str:
+    parsed_job = _parse_global_job_id(_inspect_global_job_id(record))
+    schedd = _inspect_source_schedd(record)
+    if schedd == "-" and parsed_job["schedd"] != "-":
+        schedd = str(parsed_job["schedd"])
+    job_id = parsed_job["job_id"]
+    if job_id not in (None, "", "-"):
+        return f"{schedd}#{job_id}"
+    return schedd
+
+
 def _full_record(record: dict[str, Any]) -> dict[str, Any]:
     enriched = json.loads(json.dumps(record))
     enriched["inspect"] = {
-        "global_job_id": _parse_global_job_id(_field(record, "job", "global_job_id")),
+        "global_job_id": _parse_global_job_id(_inspect_global_job_id(record)),
         "identity_display": _identity_display(record),
     }
     return enriched
@@ -319,24 +393,20 @@ def _inspect_table(verbosity: InspectVerbosity) -> Table:
 
 
 def _inspect_row(record: dict[str, Any], verbosity: InspectVerbosity) -> list[str]:
-    parsed_job = _parse_global_job_id(_field(record, "job", "global_job_id"))
-    schedd = str(_field(record, "source", "schedd") or parsed_job["schedd"])
-    if parsed_job["job_id"]:
-        schedd += '#' + str(parsed_job["job_id"])
-    resolved_vo = _field(record, "resolved_identity", "vo") or _field(record, "identity", "vo")
+    parsed_job = _parse_global_job_id(_inspect_global_job_id(record))
     row = [
-        schedd,
-        _format_unix_timestamp(_field(record, "timing", "start_time") or parsed_job["timestamp"]),
-        _format_unix_timestamp(_field(record, "timing", "end_time")),
-        str(_field(record, "job", "local_user") or _field(record, "job", "owner") or "-"),
-        str(resolved_vo or "-"),
-        _format_scale_factor(_field(record, "benchmark", "scale_factor")),
+        _inspect_schedd_job_id(record),
+        _format_unix_timestamp(_inspect_start_time(record, parsed_job)),
+        _format_unix_timestamp(_inspect_end_time(record)),
+        _inspect_user(record),
+        _inspect_vo(record),
+        _format_scale_factor(_inspect_scale_factor(record)),
     ]
 
     if verbosity == InspectVerbosity.medium:
         row.extend(
             [
-                _format_wallclock(_field(record, "usage", "wall_seconds")),
+                _format_wallclock(_inspect_wall_seconds(record)),
                 _identity_display(record),
             ]
         )
