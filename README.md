@@ -50,6 +50,22 @@ Inspect what has already been pushed:
 pixi run htcondor-accounting inspect-apel-ledger --day 2026-04-17
 ```
 
+## Day Validation
+
+Run a day-level validation pass to compare pipeline stages, identity quality, and APEL state:
+
+```bash
+pixi run htcondor-accounting validate-day --day 2026-04-21
+```
+
+Machine-readable output is also available:
+
+```bash
+pixi run htcondor-accounting validate-day --day 2026-04-21 --format json
+```
+
+This is intended as a practical pre/post-production sanity check. It reads only local files, compares counts across raw history, canonical, derived, staged, and pushed outputs, and highlights missing VO/FQAN/accounting-group fields.
+
 ## Monthly Reports
 
 Render a monthly internal report from derived daily jobs:

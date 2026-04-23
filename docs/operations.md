@@ -99,6 +99,26 @@ The monthly `index.html` page links to those CSVs with relative paths and presen
 It is rendered from Jinja templates in `src/htcondor_accounting/templates/`, which keeps the current one-page monthly layout reusable for later per-schedd reporting work.
 The top-level monthly page also links relatively to each available schedd report, and each schedd page links back to the parent monthly overview.
 
+## Day Validation
+
+Use the validator as a lightweight production sanity check before or after pushing APEL messages:
+
+```bash
+pixi run htcondor-accounting validate-day --day 2026-04-21
+pixi run htcondor-accounting validate-day --day 2026-04-21 --format json
+```
+
+The validator is fully file-based. For one day it checks:
+
+- raw-history file and record counts
+- canonical file and record counts
+- derived daily jobs, summary, and duplicates
+- missing resolved VO, missing FQAN, missing accounting group, and auth-method mix
+- APEL staged manifests and staged message files
+- APEL sent ledger entries and resend events
+
+It is meant to make mismatches visible quickly rather than fail at the first discrepancy.
+
 ## Cron Example
 
 The script computes yesterday in UTC by default, so cron only needs to pass the output root:

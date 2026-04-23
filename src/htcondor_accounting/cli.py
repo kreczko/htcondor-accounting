@@ -44,6 +44,7 @@ from htcondor_accounting.report.rollup import (
     derive_yearly,
 )
 from htcondor_accounting.report.summary import build_monthly_report_summary, summary_json_payload
+from htcondor_accounting.report.validate import validate_day
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import (
     RunStamp,
@@ -177,6 +178,15 @@ def _rollup_results_table(title: str, results: list[RollupResult]) -> Table:
             str(result.summary["wall_seconds"]),
             str(result.summary["scaled_cpu_seconds"]),
         )
+    return table
+
+
+def _validation_table(title: str, rows: list[tuple[str, Any]]) -> Table:
+    table = Table(title=title)
+    table.add_column("Field")
+    table.add_column("Value")
+    for field, value in rows:
+        table.add_row(field, str(value))
     return table
 
 
@@ -1142,6 +1152,106 @@ def inspect_apel_ledger(
     if include_resends:
         console.print(f"  resends    = {apel_ledger_resends_dir(resolved_output_root)}")
     console.print(table)
+
+
+@app.command("validate-day")
+def validate_day_command(
+    day: str = typer.Option(..., help="Day to validate, e.g. 2026-04-21"),
+    schedd: Optional[str] = typer.Option(None, "--schedd", help="Limit canonical and derived checks to one schedd"),
+    output_format: InspectFormat = typer.Option(
+        InspectFormat.table,
+        "--format",
+        case_sensitive=False,
+        help="Output format: table, json, or ndjson",
+    ),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for pipeline outputs"),
+) -> None:
+    """Validate one day's pipeline outputs and surface discrepancies."""
+    app_config = load_config(config)
+    resolved_output_root = output_root or app_config.storage.root
+    when = _parse_day(day)
+    result = validate_day(resolved_output_root, when, schedd_name=schedd)
+    payload = result.payload
+
+    if output_format == InspectFormat.json:
+        typer.echo(json.dumps(payload, sort_keys=True))
+        return
+    if output_format == InspectFormat.ndjson:
+        typer.echo(json.dumps(payload, sort_keys=True))
+        return
+
+    files = payload["files"]
+    counts = payload["counts"]
+    identity_quality = payload["identity_quality"]
+    apel = payload["apel"]
+    warnings = payload["warnings"]
+    errors = payload["errors"]
+
+    console.print("[bold]Validate Day[/bold]")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(f"  day        = {payload['day']}")
+    if schedd is not None:
+        console.print(f"  schedd     = {schedd}")
+        console.print("  note       = schedd filtering applies to canonical/derived job data; APEL checks remain day-scoped")
+
+    console.print(
+        _validation_table(
+            "Files and Records",
+            [
+                ("Raw history files", files["raw_history_files"]),
+                ("Raw history records", counts["raw_history_records"]),
+                ("Canonical files", files["canonical_files"]),
+                ("Canonical records", counts["canonical_records"]),
+                ("Derived unique jobs", counts["derived_unique_jobs"]),
+                ("Duplicate jobs", counts["duplicate_jobs"]),
+                ("APEL staged files", files["apel_staged_files"]),
+                ("APEL staged records", counts["apel_staged_records"]),
+                ("APEL pushed messages", counts["apel_pushed_messages"]),
+                ("APEL sent ledger entries", counts["apel_sent_ledger_entries"]),
+            ],
+        )
+    )
+    console.print(
+        _validation_table(
+            "Identity Quality",
+            [
+                ("Missing resolved VO", identity_quality["missing_resolved_vo"]),
+                ("Missing resolved FQAN", identity_quality["missing_resolved_fqan"]),
+                ("Missing accounting group", identity_quality["missing_accounting_group"]),
+                ("Auth method: scitoken", identity_quality["auth_method_counts"]["scitoken"]),
+                ("Auth method: x509", identity_quality["auth_method_counts"]["x509"]),
+                ("Auth method: local", identity_quality["auth_method_counts"]["local"]),
+                ("Unresolved jobs", identity_quality["unresolved_jobs"]),
+            ],
+        )
+    )
+    console.print(
+        _validation_table(
+            "APEL State",
+            [
+                ("Manifest exists", apel["manifest_exists"]),
+                ("Staged files present", apel["staged_files_present"]),
+                ("Sent entries", apel["sent_entries"]),
+                ("Resend events", apel["resend_events"]),
+                ("Manifest messages", counts["apel_manifest_messages_written"]),
+                ("Manifest bytes", counts["apel_manifest_total_bytes"]),
+            ],
+        )
+    )
+
+    issues = Table(title="Warnings and Errors")
+    issues.add_column("Level")
+    issues.add_column("Message")
+    if not warnings and not errors:
+        issues.add_row("OK", "No validation issues detected.")
+    else:
+        for message in errors:
+            issues.add_row("ERROR", message)
+        for message in warnings:
+            issues.add_row("WARN", message)
+    console.print(issues)
 
 
 @app.command("show-config")
