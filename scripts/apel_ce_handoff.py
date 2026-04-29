@@ -18,8 +18,10 @@ class HandoffStats:
     outgoing_scanned: int = 0
     copied_to_spool: int = 0
     moved_to_retrieved: int = 0
+    empty_outgoing_dirs_removed: int = 0
     retrieved_scanned: int = 0
     moved_to_sent: int = 0
+    empty_retrieved_dirs_removed: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -90,6 +92,34 @@ def move_file(source: Path, destination: Path, *, dry_run: bool) -> None:
     if dry_run:
         return
     source.rename(destination)
+
+
+def prune_empty_dirs(root: Path, *, dry_run: bool, verbose: bool) -> int:
+    if not root.exists():
+        return 0
+
+    removed = 0
+    directories = sorted((path for path in root.rglob("*") if path.is_dir()), reverse=True)
+    for directory in directories:
+        if directory == root:
+            continue
+        try:
+            if any(directory.iterdir()):
+                continue
+        except FileNotFoundError:
+            continue
+
+        log(f"remove empty directory {directory}", verbose=verbose, dry_run=dry_run)
+        if not dry_run:
+            try:
+                directory.rmdir()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                continue
+        removed += 1
+
+    return removed
 
 
 def copy_outgoing_to_spool(
@@ -225,8 +255,10 @@ def print_summary(stats: HandoffStats, *, dry_run: bool, shared_root: Path, spoo
     print(f"  outgoing files scanned      = {stats.outgoing_scanned}")
     print(f"  files copied to local spool = {stats.copied_to_spool}")
     print(f"  outgoing moved to retrieved = {stats.moved_to_retrieved}")
+    print(f"  empty outgoing dirs removed = {stats.empty_outgoing_dirs_removed}")
     print(f"  retrieved files scanned     = {stats.retrieved_scanned}")
     print(f"  retrieved moved to sent     = {stats.moved_to_sent}")
+    print(f"  empty retrieved dirs removed = {stats.empty_retrieved_dirs_removed}")
     print(f"  files skipped               = {stats.skipped}")
     print(f"  errors                      = {len(stats.errors)}")
     if stats.errors:
@@ -253,6 +285,11 @@ def main() -> int:
         verbose=args.verbose,
         stats=stats,
     )
+    stats.empty_outgoing_dirs_removed = prune_empty_dirs(
+        outgoing_root,
+        dry_run=args.dry_run,
+        verbose=args.verbose,
+    )
     process_retrieved(
         retrieved_root=retrieved_root,
         sent_root=sent_root,
@@ -260,6 +297,11 @@ def main() -> int:
         dry_run=args.dry_run,
         verbose=args.verbose,
         stats=stats,
+    )
+    stats.empty_retrieved_dirs_removed = prune_empty_dirs(
+        retrieved_root,
+        dry_run=args.dry_run,
+        verbose=args.verbose,
     )
 
     print_summary(stats, dry_run=args.dry_run, shared_root=shared_root, spool_root=spool_root)
