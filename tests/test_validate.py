@@ -161,7 +161,12 @@ def _setup_day_fixture(root: Path) -> None:
             "record_type": "apel_export_manifest",
             "day": "2026-04-21",
             "run_stamp": "20260422T010101Z",
+            "allowed_schedds": ["schedd-a.example"],
             "jobs_seen": 2,
+            "jobs_exported": 2,
+            "jobs_skipped": 0,
+            "jobs_skipped_missing_schedd": 0,
+            "skipped_by_schedd": {},
             "messages_written": 1,
             "total_bytes": msg_path.stat().st_size,
             "files_written": [
@@ -214,6 +219,9 @@ def test_validate_day_collects_counts_identity_quality_and_apel_state(tmp_path: 
     assert payload["counts"]["apel_staged_messages"] == 1
     assert payload["counts"]["apel_sent_ledger_entries"] == 1
     assert payload["counts"]["apel_resend_events"] == 1
+    assert payload["counts"]["apel_jobs_seen"] == 2
+    assert payload["counts"]["apel_jobs_exported"] == 2
+    assert payload["counts"]["apel_jobs_skipped"] == 0
 
     assert payload["identity_quality"]["missing_resolved_vo"] == 1
     assert payload["identity_quality"]["missing_resolved_fqan"] == 1
@@ -223,6 +231,25 @@ def test_validate_day_collects_counts_identity_quality_and_apel_state(tmp_path: 
 
     assert payload["warnings"] == []
     assert payload["errors"] == []
+
+
+def test_validate_day_compares_staged_records_to_jobs_exported_not_all_derived(tmp_path: Path) -> None:
+    _setup_day_fixture(tmp_path)
+    manifest_path = tmp_path / "apel" / "manifests" / "2026" / "04" / "21" / "20260422T010101Z.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["jobs_seen"] = 3
+    manifest["jobs_exported"] = 2
+    manifest["jobs_skipped"] = 1
+    manifest["skipped_by_schedd"] = {"hm01.dice.priv": 1}
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    payload = validate_day(tmp_path, day=datetime(2026, 4, 21)).payload
+
+    assert "APEL staged record count does not match exported jobs in the manifest." not in payload["warnings"]
+    assert payload["apel"]["jobs_seen"] == 3
+    assert payload["apel"]["jobs_exported"] == 2
+    assert payload["apel"]["jobs_skipped"] == 1
+    assert payload["apel"]["skipped_by_schedd"] == {"hm01.dice.priv": 1}
 
 
 def test_validate_day_warns_on_simple_mismatches(tmp_path: Path) -> None:

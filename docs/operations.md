@@ -49,6 +49,8 @@ pixi run htcondor-accounting push-apel-daily --day 2026-04-17 --force-resend
 pixi run htcondor-accounting inspect-apel-ledger --day 2026-04-17
 ```
 
+APEL export itself is gated by `apel.allowed_schedds`. Only jobs from explicitly allowed HTCondor source schedds are exported. Internal-only schedds should not be listed. `submit_host` and `machine_name` are only APEL output metadata and are not used as filters.
+
 ## Running The Pipeline
 
 Run the whole pipeline for yesterday in UTC:

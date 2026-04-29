@@ -31,6 +31,7 @@ class IdentityConfig(BaseModel):
 
 class ApelConfig(BaseModel):
     enabled: bool = False
+    allowed_schedds: list[str] = Field(default_factory=list)
     ce_id: str | None = None
     submit_host: str = "localhost"
     machine_name: str = "localhost"

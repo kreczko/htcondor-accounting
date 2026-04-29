@@ -490,6 +490,7 @@ def test_export_apel_daily_command_writes_staged_messages(tmp_path: Path) -> Non
                 'infrastructure_type = "grid"',
                 'service_level_type = "hepscore23"',
                 "service_level_value = 20.0",
+                'allowed_schedds = ["lcgce02.phy.bris.ac.uk"]',
                 'staging_dir = "apel/staging"',
                 f'outgoing_dir = "{tmp_path / "outgoing"}"',
                 "message_soft_limit_bytes = 800000",
@@ -507,10 +508,82 @@ def test_export_apel_daily_command_writes_staged_messages(tmp_path: Path) -> Non
 
     assert result.exit_code == 0
     assert "Export APEL Daily" in result.stdout
+    assert "Jobs exported" in result.stdout
+    assert "Jobs skipped" in result.stdout
+    assert "Allowed schedds" in result.stdout
     assert (tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17").exists()
     assert len(list((tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17").glob("*.msg"))) == 1
     assert len(list((tmp_path / "archive" / "apel" / "manifests" / "2026" / "04" / "17").glob("*.json"))) == 1
     assert not (tmp_path / "outgoing").exists()
+
+
+def test_export_apel_daily_command_fails_when_allowed_schedds_missing(tmp_path: Path) -> None:
+    jobs_path = tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "17" / "jobs.jsonl.zst"
+    write_jsonl_zst(
+        jobs_path,
+        [
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "site_name": "UKI-SOUTHGRID-BRIS-HEP",
+                "global_job_id": "host#1.0#999",
+                "owner": "alice",
+                "local_user": "alice",
+                "vo": "atlas",
+                "vo_group": "/atlas",
+                "vo_role": None,
+                "auth_method": "scitoken",
+                "start_time": 1776386139,
+                "end_time": 1776428989,
+                "wall_seconds": 10,
+                "cpu_user_seconds": 6,
+                "cpu_sys_seconds": 1,
+                "cpu_total_seconds": 7,
+                "processors": 1,
+                "memory_real_kb": 1000,
+                "memory_virtual_kb": 2000,
+                "scale_factor": 2.0,
+                "benchmark_type": "hepscore23",
+                "source_schedd": "lcgce02.phy.bris.ac.uk",
+                "day": "2026-04-17",
+            }
+        ],
+    )
+
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[apel]",
+                "enabled = true",
+                'ce_id = "ce.example:9619/condor"',
+                'submit_host = "submit.example"',
+                'machine_name = "worker.example"',
+                'queue_name = "condor"',
+                'infrastructure_description = "APEL-HTCondor"',
+                'infrastructure_type = "grid"',
+                'service_level_type = "hepscore23"',
+                "service_level_value = 20.0",
+                'staging_dir = "apel/staging"',
+                f'outgoing_dir = "{tmp_path / "outgoing"}"',
+                "message_soft_limit_bytes = 800000",
+                "message_hard_limit_bytes = 1000000",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["export-apel-daily", "--day", "2026-04-17", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    assert result.exit_code != 0
+    assert "allowed_schedds" in result.stdout or "allowed_schedds" in str(result.exception)
 
 
 def test_push_apel_daily_promotes_messages_into_dirq_queue(tmp_path: Path) -> None:

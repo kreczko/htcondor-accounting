@@ -16,7 +16,16 @@ from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, apel_ledger_resends_dir, apel_ledger_sent_marker_path
 
 
-def _derived_job(global_job_id: str, *, local_user: str, vo: str, wall_seconds: int, cpu_total_seconds: int, scale_factor: float | None = 2.0) -> dict:
+def _derived_job(
+    global_job_id: str,
+    *,
+    local_user: str,
+    vo: str,
+    wall_seconds: int,
+    cpu_total_seconds: int,
+    scale_factor: float | None = 2.0,
+    source_schedd: str | None = "lcgce02.phy.bris.ac.uk",
+) -> dict:
     return {
         "schema_version": 1,
         "record_type": "report_job",
@@ -39,7 +48,7 @@ def _derived_job(global_job_id: str, *, local_user: str, vo: str, wall_seconds: 
         "memory_virtual_kb": 2000,
         "scale_factor": scale_factor,
         "benchmark_type": "hepscore23",
-        "source_schedd": "lcgce02.phy.bris.ac.uk",
+        "source_schedd": source_schedd,
         "day": "2026-04-17",
     }
 
@@ -55,6 +64,7 @@ def _apel_config(tmp_path: Path, *, soft: int = 800000, hard: int = 1000000) -> 
         infrastructure_type="grid",
         service_level_type="hepscore23",
         service_level_value=20.0,
+        allowed_schedds=["lcgce02.phy.bris.ac.uk"],
         staging_dir=Path("apel/staging"),
         outgoing_dir=tmp_path / "outgoing",
         message_soft_limit_bytes=soft,
@@ -116,7 +126,10 @@ def test_export_apel_daily_writes_messages_and_manifest(tmp_path: Path) -> None:
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["record_type"] == "apel_export_manifest"
     assert manifest["day"] == "2026-04-17"
+    assert manifest["allowed_schedds"] == ["lcgce02.phy.bris.ac.uk"]
     assert manifest["jobs_seen"] == 2
+    assert manifest["jobs_exported"] == 2
+    assert manifest["jobs_skipped"] == 0
     assert manifest["messages_written"] == result.messages_written
     assert manifest["soft_limit_bytes"] == 350
     assert all(entry["bytes"] <= 1000 for entry in manifest["files_written"])
@@ -126,6 +139,77 @@ def test_export_apel_daily_writes_messages_and_manifest(tmp_path: Path) -> None:
         body = Path(entry["path"]).read_text(encoding="utf-8")
         assert body.startswith("%%\n")
         assert len(body.encode("utf-8")) == entry["bytes"]
+
+
+def test_export_apel_daily_skips_jobs_from_disallowed_schedds(tmp_path: Path) -> None:
+    output_root = tmp_path / "archive"
+    jobs_path = output_root / "derived" / "daily" / "2026" / "04" / "17" / "jobs.jsonl.zst"
+    write_jsonl_zst(
+        jobs_path,
+        [
+            _derived_job("host#1.0#999", local_user="alice", vo="atlas", wall_seconds=10, cpu_total_seconds=7),
+            _derived_job(
+                "host#2.0#999",
+                local_user="bob",
+                vo="cms",
+                wall_seconds=20,
+                cpu_total_seconds=11,
+                source_schedd="hm01.dice.priv",
+            ),
+            _derived_job(
+                "host#3.0#999",
+                local_user="carol",
+                vo="atlas",
+                wall_seconds=30,
+                cpu_total_seconds=13,
+                source_schedd=None,
+            ),
+        ],
+    )
+
+    result = export_apel_daily(
+        output_root,
+        datetime(2026, 4, 17, tzinfo=timezone.utc),
+        _apel_config(tmp_path, soft=350, hard=1000),
+        RunStamp(datetime(2026, 4, 21, 12, 30, 38, tzinfo=timezone.utc)),
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert result.jobs_seen == 3
+    assert result.jobs_exported == 1
+    assert result.jobs_skipped == 2
+    assert result.jobs_skipped_missing_schedd == 1
+    assert result.skipped_by_schedd == {"hm01.dice.priv": 1}
+    assert manifest["jobs_seen"] == 3
+    assert manifest["jobs_exported"] == 1
+    assert manifest["jobs_skipped"] == 2
+    assert manifest["jobs_skipped_missing_schedd"] == 1
+    assert manifest["skipped_by_schedd"] == {"hm01.dice.priv": 1}
+    assert sum(entry["records"] for entry in manifest["files_written"]) == 1
+
+
+def test_export_apel_daily_fails_when_allowed_schedds_is_empty(tmp_path: Path) -> None:
+    output_root = tmp_path / "archive"
+    jobs_path = output_root / "derived" / "daily" / "2026" / "04" / "17" / "jobs.jsonl.zst"
+    write_jsonl_zst(
+        jobs_path,
+        [_derived_job("host#1.0#999", local_user="alice", vo="atlas", wall_seconds=10, cpu_total_seconds=7)],
+    )
+
+    config = _apel_config(tmp_path)
+    config.allowed_schedds = []
+
+    try:
+        export_apel_daily(
+            output_root,
+            datetime(2026, 4, 17, tzinfo=timezone.utc),
+            config,
+            RunStamp(datetime(2026, 4, 21, 12, 30, 38, tzinfo=timezone.utc)),
+        )
+    except ValueError as exc:
+        assert "allowed_schedds" in str(exc)
+    else:
+        raise AssertionError("expected export_apel_daily to fail for empty allowed_schedds")
 
 
 def test_dirq_components_use_md5_of_message_bytes() -> None:

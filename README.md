@@ -50,6 +50,8 @@ Inspect what has already been pushed:
 pixi run htcondor-accounting inspect-apel-ledger --day 2026-04-17
 ```
 
+APEL export is filtered by `apel.allowed_schedds`. Only jobs whose HTCondor source schedd is explicitly listed are staged for export. This uses the job's `source.schedd` / `source_schedd` value only. `submit_host` and `machine_name` are APEL metadata, not export filters.
+
 ## Day Validation
 
 Run a day-level validation pass to compare pipeline stages, identity quality, and APEL state:

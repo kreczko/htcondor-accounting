@@ -32,6 +32,11 @@ class ApelDailyExportResult:
     day: str
     input_jobs_file: Path
     jobs_seen: int
+    jobs_exported: int
+    jobs_skipped: int
+    jobs_skipped_missing_schedd: int
+    skipped_by_schedd: dict[str, int]
+    allowed_schedds: list[str]
     messages_written: int
     total_bytes: int
     files_written: list[dict[str, Any]]
@@ -41,6 +46,37 @@ class ApelDailyExportResult:
 def load_daily_jobs(root: Path, when: datetime) -> list[dict[str, Any]]:
     path = derived_daily_jobs_file(root, when)
     return list(read_jsonl_zst(path))
+
+
+def _job_source_schedd(job: dict[str, Any]) -> str | None:
+    value = job.get("source_schedd")
+    if value in (None, ""):
+        value = job.get("source", {}).get("schedd")
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def filter_jobs_for_apel_export(
+    jobs: list[dict[str, Any]],
+    allowed_schedds: list[str],
+) -> tuple[list[dict[str, Any]], int, dict[str, int]]:
+    allowed = set(allowed_schedds)
+    exported: list[dict[str, Any]] = []
+    skipped_missing_schedd = 0
+    skipped_by_schedd: dict[str, int] = {}
+
+    for job in jobs:
+        source_schedd = _job_source_schedd(job)
+        if source_schedd is None:
+            skipped_missing_schedd += 1
+            continue
+        if source_schedd not in allowed:
+            skipped_by_schedd[source_schedd] = skipped_by_schedd.get(source_schedd, 0) + 1
+            continue
+        exported.append(job)
+
+    return exported, skipped_missing_schedd, dict(sorted(skipped_by_schedd.items()))
 
 
 def pack_apel_messages(records: list[str], soft_limit_bytes: int, hard_limit_bytes: int) -> list[ApelMessageChunk]:
@@ -89,9 +125,16 @@ def _staged_message_path(output_root: Path, when: datetime, run_stamp: RunStamp,
 
 
 def export_apel_daily(output_root: Path, when: datetime, config: ApelConfig, run_stamp: RunStamp) -> ApelDailyExportResult:
+    if not config.allowed_schedds:
+        raise ValueError("APEL export requires apel.allowed_schedds to be configured and non-empty")
+
     input_jobs_file = derived_daily_jobs_file(output_root, when)
     jobs = load_daily_jobs(output_root, when)
-    record_texts = [apel_record_text(job, config) for job in jobs]
+    export_jobs, jobs_skipped_missing_schedd, skipped_by_schedd = filter_jobs_for_apel_export(
+        jobs,
+        config.allowed_schedds,
+    )
+    record_texts = [apel_record_text(job, config) for job in export_jobs]
     chunks = pack_apel_messages(
         record_texts,
         soft_limit_bytes=config.message_soft_limit_bytes,
@@ -118,8 +161,13 @@ def export_apel_daily(output_root: Path, when: datetime, config: ApelConfig, run
         "record_type": "apel_export_manifest",
         "day": when.strftime("%Y-%m-%d"),
         "run_stamp": run_stamp.as_filename_component(),
+        "allowed_schedds": list(config.allowed_schedds),
         "input_jobs_file": str(input_jobs_file),
         "jobs_seen": len(jobs),
+        "jobs_exported": len(export_jobs),
+        "jobs_skipped": len(jobs) - len(export_jobs),
+        "jobs_skipped_missing_schedd": jobs_skipped_missing_schedd,
+        "skipped_by_schedd": skipped_by_schedd,
         "messages_written": len(files_written),
         "total_bytes": total_bytes,
         "soft_limit_bytes": config.message_soft_limit_bytes,
@@ -133,6 +181,11 @@ def export_apel_daily(output_root: Path, when: datetime, config: ApelConfig, run
         day=when.strftime("%Y-%m-%d"),
         input_jobs_file=input_jobs_file,
         jobs_seen=len(jobs),
+        jobs_exported=len(export_jobs),
+        jobs_skipped=len(jobs) - len(export_jobs),
+        jobs_skipped_missing_schedd=jobs_skipped_missing_schedd,
+        skipped_by_schedd=skipped_by_schedd,
+        allowed_schedds=list(config.allowed_schedds),
         messages_written=len(files_written),
         total_bytes=total_bytes,
         files_written=files_written,

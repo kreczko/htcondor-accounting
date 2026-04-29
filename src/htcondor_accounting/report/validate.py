@@ -101,6 +101,23 @@ def validate_day(output_root: Path, day: datetime, schedd_name: str | None = Non
     )
     staged_manifest_messages = sum(int(manifest.get("messages_written") or 0) for manifest in apel_manifests)
     staged_manifest_bytes = sum(int(manifest.get("total_bytes") or 0) for manifest in apel_manifests)
+    apel_jobs_seen = sum(int(manifest.get("jobs_seen") or 0) for manifest in apel_manifests)
+    apel_jobs_exported = sum(int(manifest.get("jobs_exported") or 0) for manifest in apel_manifests)
+    apel_jobs_skipped = sum(int(manifest.get("jobs_skipped") or 0) for manifest in apel_manifests)
+    apel_jobs_skipped_missing_schedd = sum(
+        int(manifest.get("jobs_skipped_missing_schedd") or 0) for manifest in apel_manifests
+    )
+    apel_skipped_by_schedd: dict[str, int] = {}
+    for manifest in apel_manifests:
+        for schedd, count in (manifest.get("skipped_by_schedd") or {}).items():
+            apel_skipped_by_schedd[str(schedd)] = apel_skipped_by_schedd.get(str(schedd), 0) + int(count or 0)
+    apel_allowed_schedds: list[str] = sorted(
+        {
+            str(schedd)
+            for manifest in apel_manifests
+            for schedd in (manifest.get("allowed_schedds") or [])
+        }
+    )
 
     warnings: list[str] = []
     errors: list[str] = []
@@ -115,8 +132,8 @@ def validate_day(output_root: Path, day: datetime, schedd_name: str | None = Non
         if len(canonical_records) - derived_unique != duplicate_records:
             warnings.append("Canonical-to-derived difference does not match duplicates.json.")
 
-    if apel_manifests and staged_manifest_records != derived_unique:
-        warnings.append("APEL staged record count does not match derived unique jobs.")
+    if apel_manifests and staged_manifest_records != apel_jobs_exported:
+        warnings.append("APEL staged record count does not match exported jobs in the manifest.")
 
     if len(sent_entries) > len(staged_paths):
         errors.append("Sent ledger count exceeds staged message files present.")
@@ -153,6 +170,10 @@ def validate_day(output_root: Path, day: datetime, schedd_name: str | None = Non
             "duplicate_jobs": duplicate_records,
             "apel_staged_messages": len(staged_paths),
             "apel_staged_records": staged_manifest_records,
+            "apel_jobs_seen": apel_jobs_seen,
+            "apel_jobs_exported": apel_jobs_exported,
+            "apel_jobs_skipped": apel_jobs_skipped,
+            "apel_jobs_skipped_missing_schedd": apel_jobs_skipped_missing_schedd,
             "apel_manifest_messages_written": staged_manifest_messages,
             "apel_manifest_total_bytes": staged_manifest_bytes,
             "apel_pushed_messages": len(sent_entries),
@@ -169,6 +190,12 @@ def validate_day(output_root: Path, day: datetime, schedd_name: str | None = Non
         "apel": {
             "manifest_exists": bool(apel_manifests),
             "staged_files_present": len(staged_paths),
+            "allowed_schedds": apel_allowed_schedds,
+            "jobs_seen": apel_jobs_seen,
+            "jobs_exported": apel_jobs_exported,
+            "jobs_skipped": apel_jobs_skipped,
+            "jobs_skipped_missing_schedd": apel_jobs_skipped_missing_schedd,
+            "skipped_by_schedd": dict(sorted(apel_skipped_by_schedd.items())),
             "sent_entries": len(sent_entries),
             "resend_events": len(resend_entries),
             "missing_staged_for_sent": missing_staged_for_sent,
