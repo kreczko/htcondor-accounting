@@ -11,8 +11,8 @@ from htcondor_accounting.config.models import AppConfig
 
 DEFAULT_CONFIG_PATHS = [
     Path("./site.toml"),
-    Path("./examples/site-config.toml"),
     Path("/etc/htcondor-accounting/site.toml"),
+    Path("./examples/site-config.toml"),
 ]
 
 
