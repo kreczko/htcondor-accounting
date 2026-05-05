@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>HTCondor Accounting Reports</h1>
+  <div class="summary-grid">
+    {% for item in summary_items %}
+      <div class="summary-item">
+        <span class="summary-label">{{ item.label }}</span>
+        <span class="summary-value">{{ item.value }}</span>
+      </div>
+    {% endfor %}
+  </div>
+
+  <section class="report-section">
+    <div class="section-header">
+      <h2>Latest reports</h2>
+    </div>
+    <ul class="link-grid">
+      {% if latest_daily %}
+        <li><a href="{{ latest_daily.href }}">Latest daily: {{ latest_daily.label }}</a></li>
+      {% else %}
+        <li><span class="placeholder-link">No daily reports</span></li>
+      {% endif %}
+      {% if latest_monthly %}
+        <li><a href="{{ latest_monthly.href }}">Latest monthly: {{ latest_monthly.label }}</a></li>
+      {% else %}
+        <li><span class="placeholder-link">No monthly reports</span></li>
+      {% endif %}
+    </ul>
+  </section>
+
+  <section class="report-section">
+    <div class="section-header">
+      <h2>Browse</h2>
+    </div>
+    <ul class="link-grid">
+      <li><a href="daily/index.html">Daily reports</a></li>
+      <li><a href="monthly/index.html">Monthly reports</a></li>
+      <li><a href="yearly/index.html">Yearly reports</a></li>
+    </ul>
+  </section>
+
+  <section class="report-section">
+    <div class="section-header">
+      <h2>Accounting groups</h2>
+    </div>
+    {% if accounting_groups %}
+      <ul class="link-grid">
+        {% for group in accounting_groups %}
+          <li><span class="placeholder-link">{{ group }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="note">No accounting groups discovered yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="report-section">
+    <div class="section-header">
+      <h2>VOs</h2>
+    </div>
+    {% if vos %}
+      <ul class="link-grid">
+        {% for vo in vos %}
+          <li><span class="placeholder-link">{{ vo }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="note">No VOs discovered yet.</p>
+    {% endif %}
+  </section>
+{% endblock %}

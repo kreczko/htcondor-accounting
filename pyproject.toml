@@ -37,7 +37,7 @@ htcondor-accounting = "htcondor_accounting.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-htcondor_accounting = ["templates/*.html"]
+htcondor_accounting = ["templates/*.html", "templates/reports/*.html"]
 
 [tool.ruff]
 line-length = 100

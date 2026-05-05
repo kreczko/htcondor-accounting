@@ -32,6 +32,7 @@ from htcondor_accounting.report.jobs import (
     load_monthly_jobs,
     monthly_schedd_names,
 )
+from htcondor_accounting.report.index import generate_report_indexes
 from htcondor_accounting.report.rollup import (
     RollupResult,
     derive_all_rollups,
@@ -1036,6 +1037,7 @@ def render_monthly_command(
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
     console.print(summary_table)
+    generate_report_indexes(resolved_output_root / "reports")
 
 
 @app.command("render-daily")
@@ -1080,6 +1082,7 @@ def render_daily_command(
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
     console.print(summary_table)
+    generate_report_indexes(resolved_output_root / "reports")
 
 
 @app.command("export-apel-daily")

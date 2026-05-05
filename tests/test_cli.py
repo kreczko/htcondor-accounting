@@ -728,6 +728,10 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     assert (report_dir / "summary.json").exists()
     assert (report_dir / "index.html").exists()
     assert (report_dir / "wall_hours_by_accounting_group.png").stat().st_size > 0
+    assert (tmp_path / "archive" / "reports" / "index.html").exists()
+    assert (tmp_path / "archive" / "reports" / "daily" / "index.html").exists()
+    assert (tmp_path / "archive" / "reports" / "monthly" / "index.html").exists()
+    assert (tmp_path / "archive" / "reports" / "yearly" / "index.html").exists()
     summary = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["period"] == "2026-04"
     assert summary["jobs_total"] == 2
@@ -836,6 +840,10 @@ def test_render_daily_command_writes_csv_html_summary_and_png(tmp_path: Path) ->
     assert (report_dir / "summary.json").exists()
     assert (report_dir / "index.html").exists()
     assert (report_dir / "wall_hours_by_accounting_group.png").stat().st_size > 0
+    assert (tmp_path / "archive" / "reports" / "index.html").exists()
+    assert (tmp_path / "archive" / "reports" / "daily" / "index.html").exists()
+    assert (tmp_path / "archive" / "reports" / "monthly" / "index.html").exists()
+    assert (tmp_path / "archive" / "reports" / "yearly" / "index.html").exists()
     summary = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["record_type"] == "daily_report_summary"
     assert summary["day"] == "2026-04-21"

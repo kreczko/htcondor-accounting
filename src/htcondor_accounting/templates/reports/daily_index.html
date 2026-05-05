@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Daily Reports</h1>
+  <p><a href="../index.html">Back to report overview</a></p>
+
+  {% if months %}
+    {% for month in months %}
+      <section class="report-section calendar">
+        <div class="section-header">
+          <h2>{{ month.label }}</h2>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              {% for weekday in weekdays %}
+                <th>{{ weekday }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for week in month.weeks %}
+              <tr>
+                {% for day in week %}
+                  {% if day.day is none %}
+                    <td class="empty"></td>
+                  {% elif day.href %}
+                    <td><a href="{{ day.href }}">{{ day.day }}</a></td>
+                  {% else %}
+                    <td class="missing">{{ day.day }}</td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endfor %}
+  {% else %}
+    <p class="note">No daily reports have been generated yet.</p>
+  {% endif %}
+{% endblock %}

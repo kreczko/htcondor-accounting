@@ -105,3 +105,4 @@ This writes:
 The monthly HTML page is rendered from Jinja templates in `src/htcondor_accounting/templates/`, uses relative links, and keeps presentation logic separate from Python data preparation.
 Per-schedd monthly pages are generated alongside the top-level month report and link back to the parent overview with relative paths.
 Daily and monthly HTML pages embed a static PNG plot of unscaled wall hours by accounting group. Daily plots bucket jobs by UTC completion hour; monthly plots bucket jobs by UTC completion day.
+Running `render-daily` or `render-monthly` also regenerates the static report navigation pages under `archive/reports/`, with `archive/reports/index.html` as the main landing page plus daily, monthly, and yearly index pages. These indexes are filesystem-driven and use relative links so they can be served from any static mount point.

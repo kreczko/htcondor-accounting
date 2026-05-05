@@ -190,3 +190,8 @@ def render_report_html(context: dict[str, Any]) -> str:
 
 def render_monthly_report_html(context: dict[str, Any]) -> str:
     return render_report_html(context)
+
+
+def render_template(template_name: str, context: dict[str, Any]) -> str:
+    template = _jinja_environment().get_template(template_name)
+    return template.render(**context)

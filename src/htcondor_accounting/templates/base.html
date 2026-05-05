@@ -15,6 +15,14 @@
     .section-header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.35rem; }
     .section-header h2 { margin: 0; font-size: 1rem; }
     .section-header a { font-size: 0.85rem; }
+    .link-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.45rem; padding: 0; margin: 0; list-style: none; }
+    .link-grid a, .placeholder-link { display: block; border: 1px solid #d1d5db; border-radius: 4px; padding: 0.45rem 0.55rem; background: #f9fafb; text-decoration: none; color: #1f2937; }
+    .placeholder-link { color: #4b5563; }
+    .calendar { margin-bottom: 1rem; }
+    .calendar table { table-layout: fixed; max-width: 34rem; }
+    .calendar th, .calendar td { text-align: center; white-space: normal; }
+    .calendar .empty, .calendar .missing { color: #9ca3af; background: #f9fafb; }
+    .calendar a { display: block; text-decoration: none; font-weight: 700; }
     img { max-width: 100%; height: auto; }
     table { border-collapse: collapse; width: 100%; font-size: 0.87rem; }
     th, td { border: 1px solid #d1d5db; padding: 0.28rem 0.4rem; text-align: left; white-space: nowrap; }

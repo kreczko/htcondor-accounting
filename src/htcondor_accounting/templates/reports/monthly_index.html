@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Monthly Reports</h1>
+  <p><a href="../index.html">Back to report overview</a></p>
+
+  {% if years %}
+    {% for year in years %}
+      <section class="report-section">
+        <div class="section-header">
+          <h2>{{ year.year }}</h2>
+        </div>
+        <ul class="link-grid">
+          {% for month in year.months %}
+            <li><a href="{{ month.href }}">{{ month.label }}</a></li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endfor %}
+  {% else %}
+    <p class="note">No monthly reports have been generated yet.</p>
+  {% endif %}
+{% endblock %}
