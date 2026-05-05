@@ -92,10 +92,11 @@ pixi run htcondor-accounting render-daily --day 2026-04-21
 Daily outputs are written under:
 
 ```text
-output_root/reports/daily/YYYY/MM/DD/
+reports_root/daily/YYYY/MM/DD/
 ```
 
 Each daily report includes `users.csv`, `vos.csv`, `accounting_groups.csv`, `summary.json`, `index.html`, and `wall_hours_by_accounting_group.png`.
+The effective `reports_root` comes from `[reporting] output_dir`: absolute paths are used directly, relative paths are resolved under `storage.root`, and the default is `storage.root/reports`.
 
 Generate a simple internal monthly report from the deduplicated daily jobs:
 
@@ -106,13 +107,13 @@ pixi run htcondor-accounting render-monthly --year 2026 --month 4
 Outputs are written under:
 
 ```text
-output_root/reports/monthly/YYYY/MM/
+reports_root/monthly/YYYY/MM/
 ```
 
 Per-schedd monthly pages are also generated under:
 
 ```text
-output_root/reports/monthly/YYYY/MM/schedds/<schedd>/
+reports_root/monthly/YYYY/MM/schedds/<schedd>/
 ```
 
 The monthly CSV set currently includes:

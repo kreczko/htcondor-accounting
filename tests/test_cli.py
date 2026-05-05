@@ -1022,6 +1022,114 @@ def test_render_daily_command_writes_csv_html_summary_and_png(tmp_path: Path) ->
     assert 'src="wall_hours_by_accounting_group.png"' in html
 
 
+def test_render_daily_uses_relative_reporting_output_dir(tmp_path: Path) -> None:
+    jobs_path = tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "21" / "jobs.jsonl.zst"
+    write_jsonl_zst(
+        jobs_path,
+        [
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "global_job_id": "host#1.0#999",
+                "local_user": "alice",
+                "vo": "atlas",
+                "end_time": 1776428989,
+                "wall_seconds": 3600,
+                "cpu_user_seconds": 6,
+                "cpu_sys_seconds": 1,
+                "cpu_total_seconds": 7,
+                "processors": 1,
+                "scale_factor": 1.0,
+                "acct_group": "group-a",
+                "day": "2026-04-21",
+            }
+        ],
+    )
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[reporting]",
+                'output_dir = "reports-public"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["render-daily", "--day", "2026-04-21", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    report_dir = tmp_path / "archive" / "reports-public" / "daily" / "2026" / "04" / "21"
+    assert result.exit_code == 0
+    assert (report_dir / "index.html").exists()
+    assert (tmp_path / "archive" / "reports-public" / "index.html").exists()
+    assert not (tmp_path / "archive" / "reports" / "daily" / "2026" / "04" / "21" / "index.html").exists()
+    html = (report_dir / "index.html").read_text(encoding="utf-8")
+    assert 'src="wall_hours_by_accounting_group.png"' in html
+    assert 'href="users.csv"' in html
+
+
+def test_render_monthly_uses_absolute_reporting_output_dir(tmp_path: Path) -> None:
+    jobs_path = tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "21" / "jobs.jsonl.zst"
+    write_jsonl_zst(
+        jobs_path,
+        [
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "global_job_id": "host#1.0#999",
+                "local_user": "alice",
+                "vo": "atlas",
+                "end_time": 1776428989,
+                "wall_seconds": 3600,
+                "cpu_user_seconds": 6,
+                "cpu_sys_seconds": 1,
+                "cpu_total_seconds": 7,
+                "processors": 1,
+                "scale_factor": 1.0,
+                "acct_group": "group-a",
+                "source_schedd": "schedd-a.example",
+                "day": "2026-04-21",
+            }
+        ],
+    )
+    reports_root = tmp_path / "published" / "reports"
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[reporting]",
+                f'output_dir = "{reports_root}"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["render-monthly", "--year", "2026", "--month", "4", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    report_dir = reports_root / "monthly" / "2026" / "04"
+    assert result.exit_code == 0
+    assert (report_dir / "index.html").exists()
+    assert (reports_root / "index.html").exists()
+    assert not (tmp_path / "archive" / "reports" / "monthly" / "2026" / "04" / "index.html").exists()
+    html = (report_dir / "index.html").read_text(encoding="utf-8")
+    assert 'src="wall_hours_by_accounting_group.png"' in html
+    assert 'href="users.csv"' in html
+
+
 def test_push_apel_daily_skips_when_sent_marker_exists(tmp_path: Path) -> None:
     staged_dir = tmp_path / "archive" / "apel" / "staging" / "2026" / "04" / "17"
     staged_dir.mkdir(parents=True, exist_ok=True)

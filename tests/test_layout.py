@@ -86,7 +86,7 @@ def test_rollup_layout_paths() -> None:
 
 
 def test_reports_monthly_layout_paths() -> None:
-    root = Path("archive")
+    root = Path("archive/reports")
 
     assert reports_monthly_dir(root, 2026, 4) == Path("archive/reports/monthly/2026/04")
     assert reports_monthly_accounting_groups_csv_path(root, 2026, 4) == Path("archive/reports/monthly/2026/04/accounting_groups.csv")
@@ -103,7 +103,7 @@ def test_reports_monthly_layout_paths() -> None:
 
 
 def test_reports_daily_layout_paths() -> None:
-    root = Path("archive")
+    root = Path("archive/reports")
     when = datetime(2026, 4, 21, 12, 0, 0, tzinfo=timezone.utc)
 
     assert reports_daily_dir(root, when) == Path("archive/reports/daily/2026/04/21")

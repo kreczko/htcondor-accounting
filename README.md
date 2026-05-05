@@ -84,7 +84,11 @@ Render a daily internal report from derived daily jobs:
 pixi run htcondor-accounting render-daily --day 2026-04-21
 ```
 
-This writes:
+By default reports are written under `storage.root/reports`. Set `[reporting] output_dir`
+to a relative path to publish elsewhere under `storage.root`, or to an absolute path such
+as `/mnt/shared/condor/accounting/reports` to publish directly to shared/web storage.
+
+With the default report output directory, this writes:
 
 - `archive/reports/daily/2026/04/21/users.csv`
 - `archive/reports/daily/2026/04/21/vos.csv`
@@ -113,4 +117,4 @@ This writes:
 The monthly HTML page is rendered from Jinja templates in `src/htcondor_accounting/templates/`, uses relative links, and keeps presentation logic separate from Python data preparation.
 Per-schedd monthly pages are generated alongside the top-level month report and link back to the parent overview with relative paths.
 Daily and monthly HTML pages embed a static PNG plot of unscaled wall hours by accounting group. Daily plots bucket jobs by UTC completion hour; monthly plots bucket jobs by UTC completion day.
-Running `render-daily` or `render-monthly` also regenerates the static report navigation pages under `archive/reports/`, with `archive/reports/index.html` as the main landing page plus daily, monthly, and yearly index pages. These indexes are filesystem-driven and use relative links so they can be served from any static mount point.
+Running `render-daily` or `render-monthly` also regenerates the static report navigation pages under the resolved report output directory, with `index.html` as the main landing page plus daily, monthly, and yearly index pages. These indexes are filesystem-driven and use relative links so they can be served from any static mount point.

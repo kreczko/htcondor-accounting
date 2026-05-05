@@ -34,5 +34,7 @@ message_soft_limit_bytes = 800000
 message_hard_limit_bytes = 1000000
 
 [reporting]
+# Relative paths are resolved under storage.root. Use an absolute path to publish directly
+# to NFS/shared storage or a web root, e.g. /mnt/shared/condor/accounting/reports.
 output_dir = "reports"
 publish_html = true

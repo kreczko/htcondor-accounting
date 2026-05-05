@@ -39,6 +39,14 @@ def load_config(path: Path | None = None) -> AppConfig:
     return AppConfig()
 
 
+def resolve_reports_root(config: AppConfig, output_root_override: Path | None = None) -> Path:
+    storage_root = output_root_override or config.storage.root
+    reporting_dir = config.reporting.output_dir
+    if reporting_dir.is_absolute():
+        return reporting_dir
+    return storage_root / reporting_dir
+
+
 def _replace_null_sentinel(value: Any) -> Any:
     if value == "__HTCONDOR_ACCOUNTING_NULL__":
         return None

@@ -153,6 +153,10 @@ apel/
 manifests/
 ```
 
+`reports/` is the default publication location. To write reports directly to shared
+storage or a web root, set `[reporting] output_dir` to an absolute path such as
+`/mnt/shared/condor/accounting/reports`; relative values are resolved under the state root.
+
 Create and set permissions:
 
 ```bash

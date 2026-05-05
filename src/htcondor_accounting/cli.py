@@ -11,7 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from htcondor_accounting.config.load import load_config, resolve_config_path
+from htcondor_accounting.config.load import load_config, resolve_config_path, resolve_reports_root
 from htcondor_accounting.export.csv import write_csv_rows
 from htcondor_accounting.export.apel_messages import export_apel_daily, staged_apel_files
 from htcondor_accounting.export.dirq import promote_staged_message, read_staged_message_info
@@ -148,12 +148,6 @@ def _resolved_outgoing_root(output_root: Path, outgoing_dir: Path) -> Path:
     if outgoing_dir.is_absolute():
         return outgoing_dir
     return output_root / outgoing_dir
-
-
-def _resolved_reporting_root(output_root: Path, reporting_dir: Path) -> Path:
-    if reporting_dir.is_absolute():
-        return reporting_dir
-    return output_root / reporting_dir
 
 
 def _rollup_table(title: str, result: RollupResult) -> Table:
@@ -959,6 +953,7 @@ def render_monthly_command(
     """Render one monthly internal report from derived daily jobs."""
     app_config = load_config(config)
     resolved_output_root = output_root or app_config.storage.root
+    reports_root = resolve_reports_root(app_config, output_root_override=output_root)
 
     jobs = load_monthly_jobs(resolved_output_root, year, month)
     schedd_rows = group_jobs_by_schedd(jobs) if include_schedds else None
@@ -967,7 +962,7 @@ def render_monthly_command(
 
     if include_schedds:
         write_csv_rows(
-            reports_monthly_schedds_csv_path(resolved_output_root, year, month),
+            reports_monthly_schedds_csv_path(reports_root, year, month),
             [{**row.model_dump(mode="json"), "schedd": row.group_key} for row in (schedd_rows or [])],
             [
                 "schedd",
@@ -994,11 +989,11 @@ def render_monthly_command(
             jobs=schedd_jobs,
             benchmark_type=app_config.benchmark.type,
             benchmark_baseline=app_config.benchmark.baseline_per_core,
-            users_csv_path=reports_monthly_schedd_users_csv_path(resolved_output_root, year, month, schedd_name),
-            vos_csv_path=reports_monthly_schedd_vos_csv_path(resolved_output_root, year, month, schedd_name),
-            accounting_groups_csv_path=reports_monthly_schedd_accounting_groups_csv_path(resolved_output_root, year, month, schedd_name),
-            summary_path=reports_monthly_schedd_summary_path(resolved_output_root, year, month, schedd_name),
-            index_path=reports_monthly_schedd_index_path(resolved_output_root, year, month, schedd_name),
+            users_csv_path=reports_monthly_schedd_users_csv_path(reports_root, year, month, schedd_name),
+            vos_csv_path=reports_monthly_schedd_vos_csv_path(reports_root, year, month, schedd_name),
+            accounting_groups_csv_path=reports_monthly_schedd_accounting_groups_csv_path(reports_root, year, month, schedd_name),
+            summary_path=reports_monthly_schedd_summary_path(reports_root, year, month, schedd_name),
+            index_path=reports_monthly_schedd_index_path(reports_root, year, month, schedd_name),
             schedd_name=schedd_name,
             parent_index_link="../../index.html",
         )
@@ -1016,12 +1011,12 @@ def render_monthly_command(
         jobs=jobs,
         benchmark_type=app_config.benchmark.type,
         benchmark_baseline=app_config.benchmark.baseline_per_core,
-        users_csv_path=reports_monthly_users_csv_path(resolved_output_root, year, month),
-        vos_csv_path=reports_monthly_vos_csv_path(resolved_output_root, year, month),
-        accounting_groups_csv_path=reports_monthly_accounting_groups_csv_path(resolved_output_root, year, month),
-        summary_path=reports_monthly_summary_path(resolved_output_root, year, month),
-        index_path=reports_monthly_index_path(resolved_output_root, year, month),
-        plot_path=reports_monthly_wall_hours_plot_path(resolved_output_root, year, month),
+        users_csv_path=reports_monthly_users_csv_path(reports_root, year, month),
+        vos_csv_path=reports_monthly_vos_csv_path(reports_root, year, month),
+        accounting_groups_csv_path=reports_monthly_accounting_groups_csv_path(reports_root, year, month),
+        summary_path=reports_monthly_summary_path(reports_root, year, month),
+        index_path=reports_monthly_index_path(reports_root, year, month),
+        plot_path=reports_monthly_wall_hours_plot_path(reports_root, year, month),
         schedd_links=schedd_links,
     )
     summary = top_level_result["summary"]
@@ -1041,8 +1036,9 @@ def render_monthly_command(
     console.print("[bold]Render Monthly[/bold]")
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
+    console.print(f"  reports    = {reports_root}")
     console.print(summary_table)
-    generate_report_indexes(resolved_output_root / "reports")
+    generate_report_indexes(reports_root)
 
 
 @app.command("render-daily")
@@ -1054,6 +1050,7 @@ def render_daily_command(
     """Render one daily internal report from derived daily jobs."""
     app_config = load_config(config)
     resolved_output_root = output_root or app_config.storage.root
+    reports_root = resolve_reports_root(app_config, output_root_override=output_root)
     when = _parse_day(day)
     jobs_path = derived_daily_jobs_file(resolved_output_root, when)
     if not jobs_path.exists():
@@ -1064,15 +1061,15 @@ def render_daily_command(
         period_type="daily",
         period_label=when.strftime("%Y-%m-%d"),
         jobs=jobs,
-        output_dir=reports_daily_index_path(resolved_output_root, when).parent,
+        output_dir=reports_daily_index_path(reports_root, when).parent,
         benchmark_type=app_config.benchmark.type,
         benchmark_baseline=app_config.benchmark.baseline_per_core,
-        users_csv_path=reports_daily_users_csv_path(resolved_output_root, when),
-        vos_csv_path=reports_daily_vos_csv_path(resolved_output_root, when),
-        accounting_groups_csv_path=reports_daily_accounting_groups_csv_path(resolved_output_root, when),
-        summary_path=reports_daily_summary_path(resolved_output_root, when),
-        index_path=reports_daily_index_path(resolved_output_root, when),
-        plot_path=reports_daily_wall_hours_plot_path(resolved_output_root, when),
+        users_csv_path=reports_daily_users_csv_path(reports_root, when),
+        vos_csv_path=reports_daily_vos_csv_path(reports_root, when),
+        accounting_groups_csv_path=reports_daily_accounting_groups_csv_path(reports_root, when),
+        summary_path=reports_daily_summary_path(reports_root, when),
+        index_path=reports_daily_index_path(reports_root, when),
+        plot_path=reports_daily_wall_hours_plot_path(reports_root, when),
     )
 
     summary_table = Table(title="Daily report")
@@ -1086,8 +1083,9 @@ def render_daily_command(
     console.print("[bold]Render Daily[/bold]")
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
+    console.print(f"  reports    = {reports_root}")
     console.print(summary_table)
-    generate_report_indexes(resolved_output_root / "reports")
+    generate_report_indexes(reports_root)
 
 
 @app.command("export-apel-daily")
@@ -1352,6 +1350,7 @@ def _run_phase(label: str, action: Any) -> None:
 def _run_day_pipeline(
     *,
     day: str,
+    config: Optional[Path],
     output_root: Optional[Path],
     snapshot_enabled: bool,
     export_enabled: bool,
@@ -1370,7 +1369,7 @@ def _run_day_pipeline(
             lambda: snapshot_history(
                 start=day,
                 end=day,
-                config=None,
+                config=config,
                 schedd=None,
                 output_root=output_root,
                 match=None,
@@ -1384,24 +1383,24 @@ def _run_day_pipeline(
         lambda: extract(
             start=day,
             end=day,
-            config=None,
+            config=config,
             schedd=None,
             output_root=output_root,
             site_name=None,
             match=None,
         ),
     )
-    run("derive-daily", lambda: derive_daily_command(day=day, config=None, output_root=output_root))
-    run("derive-rollups", lambda: derive_rollups_command(config=None, output_root=output_root))
+    run("derive-daily", lambda: derive_daily_command(day=day, config=config, output_root=output_root))
+    run("derive-rollups", lambda: derive_rollups_command(config=config, output_root=output_root))
 
     if export_enabled:
-        run("export-apel-daily", lambda: export_apel_daily_command(day=day, config=None, output_root=output_root))
+        run("export-apel-daily", lambda: export_apel_daily_command(day=day, config=config, output_root=output_root))
         if push_enabled:
             run(
                 "push-apel-daily",
                 lambda: push_apel_daily_command(
                     day=day,
-                    config=None,
+                    config=config,
                     output_root=output_root,
                     force_resend=False,
                     reason=None,
@@ -1419,7 +1418,7 @@ def _run_day_pipeline(
                 day=day,
                 schedd=None,
                 output_format=InspectFormat.table,
-                config=None,
+                config=config,
                 output_root=output_root,
             ),
         )
@@ -1432,6 +1431,7 @@ def _run_day_pipeline(
 @app.command("run-day")
 def run_day_command(
     day: str = typer.Option(..., help="Day to run, e.g. 2026-04-21"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
     output_root: Optional[Path] = typer.Option(None, help="Root directory for pipeline outputs"),
     no_snapshot: bool = typer.Option(False, "--no-snapshot", help="Skip raw history snapshot"),
     no_export: bool = typer.Option(False, "--no-export", help="Skip APEL export and push"),
@@ -1442,10 +1442,12 @@ def run_day_command(
     _parse_day(day)
     console.print("[bold]Run Day[/bold]")
     console.print(f"  day        = {day}")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {output_root or '<config default>'}")
 
     completed = _run_day_pipeline(
         day=day,
+        config=config,
         output_root=output_root,
         snapshot_enabled=not no_snapshot,
         export_enabled=not no_export,
@@ -1463,6 +1465,7 @@ def run_day_command(
 def run_range_command(
     start: str = typer.Option(..., help="Start day, e.g. 2026-04-01"),
     end: str = typer.Option(..., help="End day, e.g. 2026-04-30"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
     output_root: Optional[Path] = typer.Option(None, help="Root directory for pipeline outputs"),
     no_snapshot: bool = typer.Option(False, "--no-snapshot", help="Skip raw history snapshot"),
     no_export: bool = typer.Option(False, "--no-export", help="Skip APEL export and push"),
@@ -1480,6 +1483,7 @@ def run_range_command(
     console.print(f"  start      = {start_date.isoformat()}")
     console.print(f"  end        = {end_date.isoformat()}")
     console.print(f"  days       = {len(days)}")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {output_root or '<config default>'}")
     console.print(f"  push       = {'enabled' if push_enabled and not no_export else 'skipped'}")
 
@@ -1489,6 +1493,7 @@ def run_range_command(
         console.print(f"[bold]Range day {day_text}[/bold]")
         _run_day_pipeline(
             day=day_text,
+            config=config,
             output_root=output_root,
             snapshot_enabled=not no_snapshot,
             export_enabled=not no_export,
@@ -1506,6 +1511,7 @@ def run_range_command(
 def render_range_command(
     start: str = typer.Option(..., help="Start day, e.g. 2026-04-01"),
     end: str = typer.Option(..., help="End day, e.g. 2026-04-30"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
     output_root: Optional[Path] = typer.Option(None, help="Root directory for report outputs"),
 ) -> None:
     """Render daily reports for a date range and affected monthly reports once."""
@@ -1519,13 +1525,14 @@ def render_range_command(
     console.print(f"  end        = {end_date.isoformat()}")
     console.print(f"  days       = {len(days)}")
     console.print(f"  months     = {', '.join(f'{year:04d}-{month:02d}' for year, month in months)}")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {output_root or '<config default>'}")
 
     for current_day in days:
         day_text = current_day.isoformat()
         _run_phase(
             f"render-daily {day_text}",
-            lambda day_text=day_text: render_daily_command(day=day_text, config=None, output_root=output_root),
+            lambda day_text=day_text: render_daily_command(day=day_text, config=config, output_root=output_root),
         )
 
     for year, month in months:
@@ -1534,7 +1541,7 @@ def render_range_command(
             lambda year=year, month=month: render_monthly_command(
                 year=year,
                 month=month,
-                config=None,
+                config=config,
                 output_root=output_root,
                 include_schedds=False,
                 schedd=None,

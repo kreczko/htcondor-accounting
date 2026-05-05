@@ -1,0 +1,11 @@
+# Manager-side htcondor-accounting cron examples.
+# Paths match the production layout described in docs/install.md.
+
+# Daily accounting pipeline. Computes yesterday in UTC by default.
+15 01 * * * condor /opt/htcondor-accounting/scripts/run_daily_pipeline.sh /var/lib/condor/accounting >> /var/log/condor/accounting-daily.log 2>&1
+
+# Daily report refresh. Computes yesterday in UTC by default.
+45 01 * * * condor /opt/htcondor-accounting/scripts/run_daily_reports.sh /var/lib/condor/accounting >> /var/log/condor/accounting-reports.log 2>&1
+
+# Sync local accounting state to shared storage.
+15 * * * * condor rsync -a --delete /var/lib/condor/accounting/ /mnt/shared/condor/accounting/ >> /var/log/condor/accounting-sync.log 2>&1

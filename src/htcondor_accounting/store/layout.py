@@ -99,12 +99,12 @@ def derived_all_time_summary_path(root: Path) -> Path:
 
 def reports_monthly_dir(root: Path, year: int, month: int) -> Path:
     """Return the internal monthly reports directory path."""
-    return root / "reports" / "monthly" / f"{year:04d}" / f"{month:02d}"
+    return root / "monthly" / f"{year:04d}" / f"{month:02d}"
 
 
 def reports_daily_dir(root: Path, when: datetime) -> Path:
     """Return the internal daily reports directory path."""
-    return root / "reports" / "daily" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
+    return root / "daily" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
 
 
 def reports_daily_users_csv_path(root: Path, when: datetime) -> Path:
