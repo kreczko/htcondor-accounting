@@ -4,22 +4,30 @@ Tools for extracting HTCondor history, deriving daily and rollup accounting view
 
 ## Daily Operation
 
-Run the full daily workflow for yesterday in UTC:
+Run the full daily workflow for one day:
 
 ```bash
-pixi run daily-pipeline
+pixi run htcondor-accounting run-day --day 2026-04-17
 ```
 
-Run the same workflow for a specific output root and day:
+The production shell wrapper computes yesterday in UTC by default:
 
 ```bash
-scripts/run_daily_pipeline.sh /srv/htcondor-accounting 2026-04-17
+scripts/run_daily_pipeline.sh /var/lib/condor/accounting
 ```
 
-Skip the final APEL push step for testing or staging:
+Backfill a range safely. Range runs do not push APEL unless `--push` is given:
 
 ```bash
-HTCONDOR_ACCOUNTING_PUSH=0 pixi run daily-pipeline
+pixi run htcondor-accounting run-range --start 2026-04-01 --end 2026-04-30 --no-export
+pixi run htcondor-accounting run-range --start 2026-04-01 --end 2026-04-30 --no-push
+pixi run htcondor-accounting run-range --start 2026-04-01 --end 2026-04-30 --push
+```
+
+Recover reports for a range:
+
+```bash
+pixi run htcondor-accounting render-range --start 2026-04-01 --end 2026-04-30
 ```
 
 Show the resolved config:

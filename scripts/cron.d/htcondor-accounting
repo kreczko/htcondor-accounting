@@ -1,2 +1,5 @@
 # Run the full daily pipeline once per day. The script computes yesterday in UTC by default.
-15 01 * * * condor /path/to/htcondor-accounting/scripts/run_daily_pipeline.sh /srv/htcondor-accounting >> /var/log/htcondor-accounting-daily.log 2>&1
+15 01 * * * condor /opt/htcondor-accounting/scripts/run_daily_pipeline.sh /var/lib/condor/accounting >> /var/log/condor/accounting-daily.log 2>&1
+
+# Refresh daily/monthly report navigation for yesterday.
+45 01 * * * condor /opt/htcondor-accounting/scripts/run_daily_reports.sh /var/lib/condor/accounting >> /var/log/condor/accounting-reports.log 2>&1

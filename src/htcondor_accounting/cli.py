@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable, List, Optional
@@ -71,6 +71,7 @@ from htcondor_accounting.store.layout import (
     reports_monthly_vos_csv_path,
     reports_monthly_wall_hours_plot_path,
 )
+from htcondor_accounting.util.dates import affected_months, iter_inclusive_dates
 from htcondor_accounting.version import __version__
 
 app = typer.Typer(help="HTCondor accounting extraction, normalization, and APEL export utilities.")
@@ -100,6 +101,10 @@ def _parse_day_or_timestamp(value: str, end_of_day: bool = False) -> datetime:
 
 def _parse_day(value: str) -> datetime:
     return _parse_day_or_timestamp(value, end_of_day=False)
+
+
+def _parse_date(value: str) -> date:
+    return _parse_day(value).date()
 
 
 def _source_name(schedd_name: str) -> str:
@@ -1337,6 +1342,208 @@ def validate_day_command(
         for message in warnings:
             issues.add_row("WARN", message)
     console.print(issues)
+
+
+def _run_phase(label: str, action: Any) -> None:
+    console.print(f"[bold]== {label} ==[/bold]")
+    action()
+
+
+def _run_day_pipeline(
+    *,
+    day: str,
+    output_root: Optional[Path],
+    snapshot_enabled: bool,
+    export_enabled: bool,
+    push_enabled: bool,
+    validate_enabled: bool,
+) -> list[str]:
+    completed: list[str] = []
+
+    def run(label: str, action: Any) -> None:
+        _run_phase(label, action)
+        completed.append(label)
+
+    if snapshot_enabled:
+        run(
+            "snapshot-history",
+            lambda: snapshot_history(
+                start=day,
+                end=day,
+                config=None,
+                schedd=None,
+                output_root=output_root,
+                match=None,
+            ),
+        )
+    else:
+        console.print("[yellow]Skipping snapshot-history[/yellow]")
+
+    run(
+        "extract",
+        lambda: extract(
+            start=day,
+            end=day,
+            config=None,
+            schedd=None,
+            output_root=output_root,
+            site_name=None,
+            match=None,
+        ),
+    )
+    run("derive-daily", lambda: derive_daily_command(day=day, config=None, output_root=output_root))
+    run("derive-rollups", lambda: derive_rollups_command(config=None, output_root=output_root))
+
+    if export_enabled:
+        run("export-apel-daily", lambda: export_apel_daily_command(day=day, config=None, output_root=output_root))
+        if push_enabled:
+            run(
+                "push-apel-daily",
+                lambda: push_apel_daily_command(
+                    day=day,
+                    config=None,
+                    output_root=output_root,
+                    force_resend=False,
+                    reason=None,
+                ),
+            )
+        else:
+            console.print("[yellow]Skipping push-apel-daily[/yellow]")
+    else:
+        console.print("[yellow]Skipping export-apel-daily and push-apel-daily[/yellow]")
+
+    if validate_enabled:
+        run(
+            "validate-day",
+            lambda: validate_day_command(
+                day=day,
+                schedd=None,
+                output_format=InspectFormat.table,
+                config=None,
+                output_root=output_root,
+            ),
+        )
+    else:
+        console.print("[yellow]Skipping validate-day[/yellow]")
+
+    return completed
+
+
+@app.command("run-day")
+def run_day_command(
+    day: str = typer.Option(..., help="Day to run, e.g. 2026-04-21"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for pipeline outputs"),
+    no_snapshot: bool = typer.Option(False, "--no-snapshot", help="Skip raw history snapshot"),
+    no_export: bool = typer.Option(False, "--no-export", help="Skip APEL export and push"),
+    no_push: bool = typer.Option(False, "--no-push", help="Skip APEL push only"),
+    no_validate: bool = typer.Option(False, "--no-validate", help="Skip final validation"),
+) -> None:
+    """Run the standard accounting pipeline for one day."""
+    _parse_day(day)
+    console.print("[bold]Run Day[/bold]")
+    console.print(f"  day        = {day}")
+    console.print(f"  output     = {output_root or '<config default>'}")
+
+    completed = _run_day_pipeline(
+        day=day,
+        output_root=output_root,
+        snapshot_enabled=not no_snapshot,
+        export_enabled=not no_export,
+        push_enabled=not no_push,
+        validate_enabled=not no_validate,
+    )
+
+    console.print("[green]Run Day complete[/green]")
+    console.print(f"  day        = {day}")
+    console.print(f"  phases     = {len(completed)}")
+    console.print(f"  completed  = {', '.join(completed)}")
+
+
+@app.command("run-range")
+def run_range_command(
+    start: str = typer.Option(..., help="Start day, e.g. 2026-04-01"),
+    end: str = typer.Option(..., help="End day, e.g. 2026-04-30"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for pipeline outputs"),
+    no_snapshot: bool = typer.Option(False, "--no-snapshot", help="Skip raw history snapshot"),
+    no_export: bool = typer.Option(False, "--no-export", help="Skip APEL export and push"),
+    no_push: bool = typer.Option(False, "--no-push", help="Skip APEL push"),
+    push: bool = typer.Option(False, "--push", help="Explicitly enable APEL push over the range"),
+    no_validate: bool = typer.Option(False, "--no-validate", help="Skip final validation"),
+) -> None:
+    """Run the daily pipeline over an inclusive date range."""
+    start_date = _parse_date(start)
+    end_date = _parse_date(end)
+    days = iter_inclusive_dates(start_date, end_date)
+    push_enabled = push and not no_push
+
+    console.print("[bold]Run Range[/bold]")
+    console.print(f"  start      = {start_date.isoformat()}")
+    console.print(f"  end        = {end_date.isoformat()}")
+    console.print(f"  days       = {len(days)}")
+    console.print(f"  output     = {output_root or '<config default>'}")
+    console.print(f"  push       = {'enabled' if push_enabled and not no_export else 'skipped'}")
+
+    completed_days = 0
+    for current_day in days:
+        day_text = current_day.isoformat()
+        console.print(f"[bold]Range day {day_text}[/bold]")
+        _run_day_pipeline(
+            day=day_text,
+            output_root=output_root,
+            snapshot_enabled=not no_snapshot,
+            export_enabled=not no_export,
+            push_enabled=push_enabled,
+            validate_enabled=not no_validate,
+        )
+        completed_days += 1
+        console.print(f"[green]OK[/green] {day_text}")
+
+    console.print("[green]Run Range complete[/green]")
+    console.print(f"  days completed = {completed_days}")
+
+
+@app.command("render-range")
+def render_range_command(
+    start: str = typer.Option(..., help="Start day, e.g. 2026-04-01"),
+    end: str = typer.Option(..., help="End day, e.g. 2026-04-30"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for report outputs"),
+) -> None:
+    """Render daily reports for a date range and affected monthly reports once."""
+    start_date = _parse_date(start)
+    end_date = _parse_date(end)
+    days = iter_inclusive_dates(start_date, end_date)
+    months = affected_months(start_date, end_date)
+
+    console.print("[bold]Render Range[/bold]")
+    console.print(f"  start      = {start_date.isoformat()}")
+    console.print(f"  end        = {end_date.isoformat()}")
+    console.print(f"  days       = {len(days)}")
+    console.print(f"  months     = {', '.join(f'{year:04d}-{month:02d}' for year, month in months)}")
+    console.print(f"  output     = {output_root or '<config default>'}")
+
+    for current_day in days:
+        day_text = current_day.isoformat()
+        _run_phase(
+            f"render-daily {day_text}",
+            lambda day_text=day_text: render_daily_command(day=day_text, config=None, output_root=output_root),
+        )
+
+    for year, month in months:
+        _run_phase(
+            f"render-monthly {year:04d}-{month:02d}",
+            lambda year=year, month=month: render_monthly_command(
+                year=year,
+                month=month,
+                config=None,
+                output_root=output_root,
+                include_schedds=False,
+                schedd=None,
+            ),
+        )
+
+    console.print("[green]Render Range complete[/green]")
+    console.print(f"  daily reports   = {len(days)}")
+    console.print(f"  monthly reports = {len(months)}")
 
 
 @app.command("show-config")

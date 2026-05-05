@@ -11,7 +11,7 @@ The recommended daily order is:
 5. export staged APEL messages
 6. push staged APEL messages into the outgoing queue
 
-This is the order used by `scripts/run_daily_pipeline.sh`.
+This is the order used by `htcondor-accounting run-day` and `scripts/run_daily_pipeline.sh`.
 
 ## Why Snapshot Comes First
 
@@ -53,22 +53,32 @@ APEL export itself is gated by `apel.allowed_schedds`. Only jobs from explicitly
 
 ## Running The Pipeline
 
-Run the whole pipeline for yesterday in UTC:
+Run the whole pipeline for one day:
 
 ```bash
-pixi run daily-pipeline
+pixi run htcondor-accounting run-day --day 2026-04-17
 ```
 
-Run for a specific day:
+The production wrapper computes yesterday in UTC by default, and also accepts output root and day:
 
 ```bash
-scripts/run_daily_pipeline.sh /srv/htcondor-accounting 2026-04-17
+scripts/run_daily_pipeline.sh /var/lib/condor/accounting 2026-04-17
 ```
 
-Skip push during testing:
+Safe backfill examples:
 
 ```bash
-HTCONDOR_ACCOUNTING_PUSH=0 scripts/run_daily_pipeline.sh /srv/htcondor-accounting 2026-04-17
+pixi run htcondor-accounting run-range --start 2026-04-01 --end 2026-04-30 --no-export
+pixi run htcondor-accounting run-range --start 2026-04-01 --end 2026-04-30 --no-push
+pixi run htcondor-accounting run-range --start 2026-04-01 --end 2026-04-30 --push
+```
+
+`run-range` defaults to no push; pushing staged APEL messages over a range requires explicit `--push`.
+
+Recover interrupted report generation:
+
+```bash
+pixi run htcondor-accounting render-range --start 2026-04-01 --end 2026-04-30
 ```
 
 ## Daily And Monthly Reporting
@@ -142,7 +152,7 @@ It is meant to make mismatches visible quickly rather than fail at the first dis
 The script computes yesterday in UTC by default, so cron only needs to pass the output root:
 
 ```cron
-15 01 * * * condor /path/to/htcondor-accounting/scripts/run_daily_pipeline.sh /srv/htcondor-accounting >> /var/log/htcondor-accounting-daily.log 2>&1
+15 01 * * * condor /opt/htcondor-accounting/scripts/run_daily_pipeline.sh /var/lib/condor/accounting >> /var/log/condor/accounting-daily.log 2>&1
 ```
 
-Manual reruns for a specific day should be done by invoking the script with that day argument directly.
+Production-ready cron examples are available in `examples/cron/htcondor-accounting.cron`.

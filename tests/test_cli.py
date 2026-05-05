@@ -4,6 +4,7 @@ import json
 
 from typer.testing import CliRunner
 
+import htcondor_accounting.cli as cli
 from htcondor_accounting.cli import app
 from htcondor_accounting.models.canonical import (
     BenchmarkInfo,
@@ -18,6 +19,171 @@ from htcondor_accounting.store.jsonl import write_jsonl_zst
 
 
 runner = CliRunner()
+
+
+def _stub_daily_pipeline_steps(monkeypatch) -> list[str]:
+    calls: list[str] = []
+
+    def stub(name: str):
+        def _inner(*args, **kwargs):
+            calls.append(name)
+
+        return _inner
+
+    monkeypatch.setattr(cli, "snapshot_history", stub("snapshot-history"))
+    monkeypatch.setattr(cli, "extract", stub("extract"))
+    monkeypatch.setattr(cli, "derive_daily_command", stub("derive-daily"))
+    monkeypatch.setattr(cli, "derive_rollups_command", stub("derive-rollups"))
+    monkeypatch.setattr(cli, "export_apel_daily_command", stub("export-apel-daily"))
+    monkeypatch.setattr(cli, "push_apel_daily_command", stub("push-apel-daily"))
+    monkeypatch.setattr(cli, "validate_day_command", stub("validate-day"))
+    return calls
+
+
+def test_run_day_executes_pipeline_steps_in_order(monkeypatch, tmp_path: Path) -> None:
+    calls = _stub_daily_pipeline_steps(monkeypatch)
+
+    result = runner.invoke(
+        app,
+        ["run-day", "--day", "2026-04-21", "--output-root", str(tmp_path / "archive")],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        "snapshot-history",
+        "extract",
+        "derive-daily",
+        "derive-rollups",
+        "export-apel-daily",
+        "push-apel-daily",
+        "validate-day",
+    ]
+    assert "Run Day complete" in result.stdout
+
+
+def test_run_day_no_push_skips_only_push(monkeypatch, tmp_path: Path) -> None:
+    calls = _stub_daily_pipeline_steps(monkeypatch)
+
+    result = runner.invoke(
+        app,
+        ["run-day", "--day", "2026-04-21", "--output-root", str(tmp_path / "archive"), "--no-push"],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert "export-apel-daily" in calls
+    assert "push-apel-daily" not in calls
+    assert "validate-day" in calls
+
+
+def test_run_day_no_export_skips_export_and_push(monkeypatch, tmp_path: Path) -> None:
+    calls = _stub_daily_pipeline_steps(monkeypatch)
+
+    result = runner.invoke(
+        app,
+        ["run-day", "--day", "2026-04-21", "--output-root", str(tmp_path / "archive"), "--no-export"],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert "export-apel-daily" not in calls
+    assert "push-apel-daily" not in calls
+    assert "validate-day" in calls
+
+
+def test_run_range_iterates_days_inclusively_and_defaults_to_no_push(monkeypatch, tmp_path: Path) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    def fake_run_day_pipeline(**kwargs):
+        calls.append((kwargs["day"], kwargs["push_enabled"]))
+        return ["ok"]
+
+    monkeypatch.setattr(cli, "_run_day_pipeline", fake_run_day_pipeline)
+
+    result = runner.invoke(
+        app,
+        [
+            "run-range",
+            "--start",
+            "2026-04-29",
+            "--end",
+            "2026-05-01",
+            "--output-root",
+            str(tmp_path / "archive"),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert calls == [("2026-04-29", False), ("2026-04-30", False), ("2026-05-01", False)]
+
+
+def test_run_range_push_enables_push(monkeypatch, tmp_path: Path) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    def fake_run_day_pipeline(**kwargs):
+        calls.append((kwargs["day"], kwargs["push_enabled"]))
+        return ["ok"]
+
+    monkeypatch.setattr(cli, "_run_day_pipeline", fake_run_day_pipeline)
+
+    result = runner.invoke(
+        app,
+        [
+            "run-range",
+            "--start",
+            "2026-04-29",
+            "--end",
+            "2026-04-30",
+            "--push",
+            "--output-root",
+            str(tmp_path / "archive"),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert calls == [("2026-04-29", True), ("2026-04-30", True)]
+
+
+def test_render_range_renders_daily_days_and_monthly_once(monkeypatch, tmp_path: Path) -> None:
+    daily_calls: list[str] = []
+    monthly_calls: list[tuple[int, int]] = []
+
+    def fake_render_daily_command(day: str, config, output_root):
+        daily_calls.append(day)
+
+    def fake_render_monthly_command(year: int, month: int, config, output_root, include_schedds: bool, schedd):
+        monthly_calls.append((year, month))
+
+    monkeypatch.setattr(cli, "render_daily_command", fake_render_daily_command)
+    monkeypatch.setattr(cli, "render_monthly_command", fake_render_monthly_command)
+
+    result = runner.invoke(
+        app,
+        [
+            "render-range",
+            "--start",
+            "2026-04-28",
+            "--end",
+            "2026-05-03",
+            "--output-root",
+            str(tmp_path / "archive"),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert daily_calls == [
+        "2026-04-28",
+        "2026-04-29",
+        "2026-04-30",
+        "2026-05-01",
+        "2026-05-02",
+        "2026-05-03",
+    ]
+    assert monthly_calls == [(2026, 4), (2026, 5)]
 
 
 def _record(job_id: str, owner: str, vo: str | None, scale_factor: float | None) -> CanonicalJobRecord:

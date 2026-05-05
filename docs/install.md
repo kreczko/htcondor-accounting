@@ -188,8 +188,11 @@ to avoid partial data.
 Example:
 
 ```cron
-15 03 * * * condor /usr/bin/env bash -lc 'cd /opt/htcondor-accounting && pixi run daily-pipeline' >> /var/log/condor/accounting.log 2>&1
+15 01 * * * condor /opt/htcondor-accounting/scripts/run_daily_pipeline.sh /var/lib/condor/accounting >> /var/log/condor/accounting-daily.log 2>&1
+45 01 * * * condor /opt/htcondor-accounting/scripts/run_daily_reports.sh /var/lib/condor/accounting >> /var/log/condor/accounting-reports.log 2>&1
 ```
+
+The repository also includes copy-editable production cron examples in `examples/cron/htcondor-accounting.cron`.
 
 ---
 

@@ -7,6 +7,7 @@ DAY="${2:-$(date -u -d '1 day ago' +%F)}"
 
 cd "${REPO_ROOT}"
 
-pixi run htcondor-accounting run-day \
-  --day "${DAY}" \
+pixi run htcondor-accounting render-range \
+  --start "${DAY}" \
+  --end "${DAY}" \
   --output-root "${OUTPUT_ROOT}"
