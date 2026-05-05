@@ -47,7 +47,7 @@
     {% if accounting_groups %}
       <ul class="link-grid">
         {% for group in accounting_groups %}
-          <li><span class="placeholder-link">{{ group }}</span></li>
+          <li><span class="placeholder-link entity-chip" title="{{ group }}">{{ group }}</span></li>
         {% endfor %}
       </ul>
     {% else %}
@@ -62,7 +62,7 @@
     {% if vos %}
       <ul class="link-grid">
         {% for vo in vos %}
-          <li><span class="placeholder-link">{{ vo }}</span></li>
+          <li><span class="placeholder-link entity-chip" title="{{ vo }}">{{ vo }}</span></li>
         {% endfor %}
       </ul>
     {% else %}

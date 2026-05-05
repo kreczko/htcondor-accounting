@@ -115,6 +115,33 @@ def test_root_landing_page_generation_and_aggregation(tmp_path: Path) -> None:
     assert "<script" not in html.lower()
 
 
+def test_root_landing_page_entity_chips_have_titles_and_ellipsis_css(tmp_path: Path) -> None:
+    reports_root = tmp_path / "reports"
+    long_group = "very-long-internal-accounting-group-name-that-should-truncate"
+    long_vo = "na62.vo.gridpp.ac.uk"
+    _write_report(
+        reports_root,
+        period="daily",
+        label="2026-04-21",
+        jobs=1,
+        wall_seconds=1,
+        cpu_seconds=1,
+        users=["alice"],
+        vos=[long_vo],
+        accounting_groups=[long_group],
+    )
+
+    generate_report_indexes(reports_root)
+
+    html = (reports_root / "index.html").read_text(encoding="utf-8")
+    assert f'class="placeholder-link entity-chip" title="{long_group}"' in html
+    assert f'class="placeholder-link entity-chip" title="{long_vo}"' in html
+    assert ".entity-chip" in html
+    assert "overflow: hidden" in html
+    assert "text-overflow: ellipsis" in html
+    assert "white-space: nowrap" in html
+
+
 def test_daily_calendar_generation_and_relative_links(tmp_path: Path) -> None:
     reports_root = tmp_path / "reports"
     _write_report(
