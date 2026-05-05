@@ -727,6 +727,7 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     assert (report_dir / "accounting_groups.csv").exists()
     assert (report_dir / "summary.json").exists()
     assert (report_dir / "index.html").exists()
+    assert (report_dir / "wall_hours_by_accounting_group.png").stat().st_size > 0
     summary = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["period"] == "2026-04"
     assert summary["jobs_total"] == 2
@@ -750,6 +751,7 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     assert 'href="users.csv"' in html or "href='users.csv'" in html
     assert 'href="vos.csv"' in html or "href='vos.csv'" in html
     assert 'href="accounting_groups.csv"' in html or "href='accounting_groups.csv'" in html
+    assert 'src="wall_hours_by_accounting_group.png"' in html
     assert "Wall h (scaled)" in html
 
     schedd_dir = report_dir / "schedds" / "lcgce02.phy.bris.ac.uk"
@@ -767,6 +769,83 @@ def test_render_monthly_command_writes_csv_html_and_summary(tmp_path: Path) -> N
     schedd_html = (schedd_dir / "index.html").read_text(encoding="utf-8")
     assert "../index.html" in schedd_html
     assert "Back to monthly overview" in schedd_html
+
+
+def test_render_daily_command_writes_csv_html_summary_and_png(tmp_path: Path) -> None:
+    jobs_path = tmp_path / "archive" / "derived" / "daily" / "2026" / "04" / "21" / "jobs.jsonl.zst"
+    write_jsonl_zst(
+        jobs_path,
+        [
+            {
+                "schema_version": 1,
+                "record_type": "report_job",
+                "site_name": "UKI-SOUTHGRID-BRIS-HEP",
+                "global_job_id": "host#1.0#999",
+                "owner": "alice",
+                "local_user": "alice",
+                "vo": "atlas",
+                "vo_group": "/atlas",
+                "vo_role": None,
+                "auth_method": "scitoken",
+                "start_time": 1776386139,
+                "end_time": 1776428989,
+                "wall_seconds": 3600,
+                "cpu_user_seconds": 6,
+                "cpu_sys_seconds": 1,
+                "cpu_total_seconds": 7,
+                "processors": 1,
+                "memory_real_kb": 1000,
+                "memory_virtual_kb": 2000,
+                "scale_factor": 2.0,
+                "benchmark_type": "hepscore23",
+                "source_schedd": "lcgce02.phy.bris.ac.uk",
+                "acct_group": "group-a",
+                "day": "2026-04-21",
+            }
+        ],
+    )
+
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[reporting]",
+                'output_dir = "reports"',
+                "publish_html = true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["render-daily", "--day", "2026-04-21", "--config", str(config_path)],
+        terminal_width=200,
+    )
+
+    report_dir = tmp_path / "archive" / "reports" / "daily" / "2026" / "04" / "21"
+    assert result.exit_code == 0
+    assert "Render Daily" in result.stdout
+    assert "2026-04-21" in result.stdout
+    assert (report_dir / "users.csv").exists()
+    assert (report_dir / "vos.csv").exists()
+    assert (report_dir / "accounting_groups.csv").exists()
+    assert (report_dir / "summary.json").exists()
+    assert (report_dir / "index.html").exists()
+    assert (report_dir / "wall_hours_by_accounting_group.png").stat().st_size > 0
+    summary = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["record_type"] == "daily_report_summary"
+    assert summary["day"] == "2026-04-21"
+    assert summary["jobs_total"] == 1
+    html = (report_dir / "index.html").read_text(encoding="utf-8")
+    assert "HTCondor Accounting Daily Report 2026-04-21" in html
+    assert 'href="users.csv"' in html or "href='users.csv'" in html
+    assert 'href="vos.csv"' in html or "href='vos.csv'" in html
+    assert 'href="accounting_groups.csv"' in html or "href='accounting_groups.csv'" in html
+    assert 'src="wall_hours_by_accounting_group.png"' in html
 
 
 def test_push_apel_daily_skips_when_sent_marker_exists(tmp_path: Path) -> None:

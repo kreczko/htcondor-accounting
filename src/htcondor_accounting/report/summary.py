@@ -2,17 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from htcondor_accounting.models.reporting import MonthlyReportSummary
+from htcondor_accounting.models.reporting import DailyReportSummary, MonthlyReportSummary
 from htcondor_accounting.util.dates import month_label
 
 
-def build_monthly_report_summary(
-    year: int,
-    month: int,
-    jobs: list[dict[str, Any]],
-    *,
-    schedd: str | None = None,
-) -> MonthlyReportSummary:
+def _usage_totals(jobs: list[dict[str, Any]]) -> dict[str, Any]:
     days_included = len({str(job.get("day")) for job in jobs if job.get("day")})
     wall_seconds = sum(int(job.get("wall_seconds") or 0) for job in jobs)
     cpu_user_seconds = sum(int(job.get("cpu_user_seconds") or 0) for job in jobs)
@@ -29,25 +23,41 @@ def build_monthly_report_summary(
         scaled_wall_seconds += int(job.get("wall_seconds") or 0) * scale_factor
         scaled_cpu_seconds += int(job.get("cpu_total_seconds") or 0) * scale_factor
 
+    return {
+        "days_included": days_included,
+        "jobs_total": len(jobs),
+        "wall_seconds": wall_seconds,
+        "cpu_user_seconds": cpu_user_seconds,
+        "cpu_sys_seconds": cpu_sys_seconds,
+        "cpu_total_seconds": cpu_total_seconds,
+        "scaled_wall_seconds": scaled_wall_seconds,
+        "scaled_cpu_seconds": scaled_cpu_seconds,
+        "avg_processors": (sum(processor_values) / len(processor_values)) if processor_values else None,
+        "max_processors": max(processor_values) if processor_values else None,
+        "memory_real_kb_max": max(memory_real_values) if memory_real_values else None,
+        "memory_virtual_kb_max": max(memory_virtual_values) if memory_virtual_values else None,
+    }
+
+
+def build_monthly_report_summary(
+    year: int,
+    month: int,
+    jobs: list[dict[str, Any]],
+    *,
+    schedd: str | None = None,
+) -> MonthlyReportSummary:
     return MonthlyReportSummary(
         year=year,
         month=month,
         period=month_label(year, month),
         schedd=schedd,
-        days_included=days_included,
-        jobs_total=len(jobs),
-        wall_seconds=wall_seconds,
-        cpu_user_seconds=cpu_user_seconds,
-        cpu_sys_seconds=cpu_sys_seconds,
-        cpu_total_seconds=cpu_total_seconds,
-        scaled_wall_seconds=scaled_wall_seconds,
-        scaled_cpu_seconds=scaled_cpu_seconds,
-        avg_processors=(sum(processor_values) / len(processor_values)) if processor_values else None,
-        max_processors=max(processor_values) if processor_values else None,
-        memory_real_kb_max=max(memory_real_values) if memory_real_values else None,
-        memory_virtual_kb_max=max(memory_virtual_values) if memory_virtual_values else None,
+        **_usage_totals(jobs),
     )
 
 
-def summary_json_payload(summary: MonthlyReportSummary) -> dict[str, Any]:
+def build_daily_report_summary(day: str, jobs: list[dict[str, Any]]) -> DailyReportSummary:
+    return DailyReportSummary(day=day, period=day, **_usage_totals(jobs))
+
+
+def summary_json_payload(summary: MonthlyReportSummary | DailyReportSummary) -> dict[str, Any]:
     return summary.model_dump(mode="json")

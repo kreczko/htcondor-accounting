@@ -102,6 +102,41 @@ def reports_monthly_dir(root: Path, year: int, month: int) -> Path:
     return root / "reports" / "monthly" / f"{year:04d}" / f"{month:02d}"
 
 
+def reports_daily_dir(root: Path, when: datetime) -> Path:
+    """Return the internal daily reports directory path."""
+    return root / "reports" / "daily" / when.strftime("%Y") / when.strftime("%m") / when.strftime("%d")
+
+
+def reports_daily_users_csv_path(root: Path, when: datetime) -> Path:
+    """Return the daily user usage CSV path."""
+    return reports_daily_dir(root, when) / "users.csv"
+
+
+def reports_daily_vos_csv_path(root: Path, when: datetime) -> Path:
+    """Return the daily VO usage CSV path."""
+    return reports_daily_dir(root, when) / "vos.csv"
+
+
+def reports_daily_accounting_groups_csv_path(root: Path, when: datetime) -> Path:
+    """Return the daily accounting-group usage CSV path."""
+    return reports_daily_dir(root, when) / "accounting_groups.csv"
+
+
+def reports_daily_summary_path(root: Path, when: datetime) -> Path:
+    """Return the daily reporting summary JSON path."""
+    return reports_daily_dir(root, when) / "summary.json"
+
+
+def reports_daily_index_path(root: Path, when: datetime) -> Path:
+    """Return the daily report HTML index path."""
+    return reports_daily_dir(root, when) / "index.html"
+
+
+def reports_daily_wall_hours_plot_path(root: Path, when: datetime) -> Path:
+    """Return the daily wall-hours plot PNG path."""
+    return reports_daily_dir(root, when) / "wall_hours_by_accounting_group.png"
+
+
 def reports_monthly_users_csv_path(root: Path, year: int, month: int) -> Path:
     """Return the monthly user usage CSV path."""
     return reports_monthly_dir(root, year, month) / "users.csv"
@@ -130,6 +165,11 @@ def reports_monthly_summary_path(root: Path, year: int, month: int) -> Path:
 def reports_monthly_index_path(root: Path, year: int, month: int) -> Path:
     """Return the monthly report HTML index path."""
     return reports_monthly_dir(root, year, month) / "index.html"
+
+
+def reports_monthly_wall_hours_plot_path(root: Path, year: int, month: int) -> Path:
+    """Return the monthly wall-hours plot PNG path."""
+    return reports_monthly_dir(root, year, month) / "wall_hours_by_accounting_group.png"
 
 
 def reports_monthly_schedd_dir(root: Path, year: int, month: int, schedd: str) -> Path:

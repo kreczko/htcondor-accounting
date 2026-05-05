@@ -24,14 +24,11 @@ from htcondor_accounting.export.ledger import (
 )
 from htcondor_accounting.models.canonical import CanonicalJobRecord
 from htcondor_accounting.models.manifest import ExtractManifest, ExtractManifestFileEntry
-from htcondor_accounting.render.html import build_monthly_report_context, render_monthly_report_html
+from htcondor_accounting.report.builder import write_report_set
 from htcondor_accounting.report.daily import canonical_day_paths, derive_daily
 from htcondor_accounting.report.jobs import (
     filter_jobs_by_schedd,
-    group_jobs_by_accounting_group,
     group_jobs_by_schedd,
-    group_jobs_by_user,
-    group_jobs_by_vo,
     load_monthly_jobs,
     monthly_schedd_names,
 )
@@ -43,7 +40,6 @@ from htcondor_accounting.report.rollup import (
     derive_weekly,
     derive_yearly,
 )
-from htcondor_accounting.report.summary import build_monthly_report_summary, summary_json_payload
 from htcondor_accounting.report.validate import validate_day
 from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
 from htcondor_accounting.store.layout import (
@@ -51,9 +47,16 @@ from htcondor_accounting.store.layout import (
     apel_ledger_resends_dir,
     apel_ledger_sent_dir,
     canonical_run_file,
+    derived_daily_jobs_file,
     ensure_parent_dir,
     manifest_file,
     raw_history_run_file,
+    reports_daily_accounting_groups_csv_path,
+    reports_daily_index_path,
+    reports_daily_summary_path,
+    reports_daily_users_csv_path,
+    reports_daily_vos_csv_path,
+    reports_daily_wall_hours_plot_path,
     reports_monthly_accounting_groups_csv_path,
     reports_monthly_index_path,
     reports_monthly_schedd_accounting_groups_csv_path,
@@ -65,6 +68,7 @@ from htcondor_accounting.store.layout import (
     reports_monthly_summary_path,
     reports_monthly_users_csv_path,
     reports_monthly_vos_csv_path,
+    reports_monthly_wall_hours_plot_path,
 )
 from htcondor_accounting.version import __version__
 
@@ -490,7 +494,6 @@ def bucket_raw_ads_by_day(records: Iterable[dict[str, Any]]) -> dict[datetime, l
 
 def _write_monthly_report_set(
     *,
-    output_root: Path,
     year: int,
     month: int,
     jobs: list[dict[str, Any]],
@@ -504,85 +507,27 @@ def _write_monthly_report_set(
     schedd_name: str | None = None,
     parent_index_link: str | None = None,
     schedd_links: list[dict[str, str]] | None = None,
+    plot_path: Path | None = None,
 ) -> dict[str, Any]:
-    user_rows = group_jobs_by_user(jobs)
-    vo_rows = group_jobs_by_vo(jobs)
-    accounting_group_rows = group_jobs_by_accounting_group(jobs)
-    summary = build_monthly_report_summary(year, month, jobs, schedd=schedd_name)
-
-    write_csv_rows(
-        users_csv_path,
-        [{**row.model_dump(mode="json"), "user": row.group_key} for row in user_rows],
-        [
-            "user",
-            "vo",
-            "jobs",
-            "wall_seconds",
-            "cpu_user_seconds",
-            "cpu_sys_seconds",
-            "cpu_total_seconds",
-            "scaled_wall_seconds",
-            "scaled_cpu_seconds",
-            "avg_processors",
-            "max_processors",
-            "memory_real_kb_max",
-            "memory_virtual_kb_max",
-        ],
-    )
-    write_csv_rows(
-        vos_csv_path,
-        [{**row.model_dump(mode="json"), "vo": row.group_key} for row in vo_rows],
-        [
-            "vo",
-            "users",
-            "jobs",
-            "wall_seconds",
-            "cpu_user_seconds",
-            "cpu_sys_seconds",
-            "cpu_total_seconds",
-            "scaled_wall_seconds",
-            "scaled_cpu_seconds",
-            "avg_processors",
-            "max_processors",
-            "memory_real_kb_max",
-            "memory_virtual_kb_max",
-        ],
-    )
-    write_csv_rows(
-        accounting_groups_csv_path,
-        [{**row.model_dump(mode="json"), "accounting_group": row.group_key} for row in accounting_group_rows],
-        [
-            "accounting_group",
-            "vo",
-            "users",
-            "jobs",
-            "wall_seconds",
-            "cpu_user_seconds",
-            "cpu_sys_seconds",
-            "cpu_total_seconds",
-            "scaled_wall_seconds",
-            "scaled_cpu_seconds",
-            "avg_processors",
-            "max_processors",
-            "memory_real_kb_max",
-            "memory_virtual_kb_max",
-        ],
-    )
-    _write_json(summary_path, summary_json_payload(summary))
-    ensure_parent_dir(index_path)
-    report_context = build_monthly_report_context(
-        summary,
-        user_rows,
-        vo_rows,
-        accounting_group_rows,
+    return write_report_set(
+        period_type="monthly",
+        period_label=f"{year:04d}-{month:02d}",
+        jobs=jobs,
+        output_dir=index_path.parent,
         benchmark_type=benchmark_type,
         benchmark_baseline=benchmark_baseline,
+        users_csv_path=users_csv_path,
+        vos_csv_path=vos_csv_path,
+        accounting_groups_csv_path=accounting_groups_csv_path,
+        summary_path=summary_path,
+        index_path=index_path,
+        plot_path=plot_path,
+        year=year,
+        month=month,
         schedd_name=schedd_name,
         parent_index_link=parent_index_link,
         schedd_links=schedd_links,
     )
-    index_path.write_text(render_monthly_report_html(report_context), encoding="utf-8")
-    return {"summary": summary, "index_path": index_path}
 
 
 @app.command()
@@ -1038,7 +983,6 @@ def render_monthly_command(
     for schedd_name in available_schedds:
         schedd_jobs = filter_jobs_by_schedd(jobs, schedd_name)
         _write_monthly_report_set(
-            output_root=resolved_output_root,
             year=year,
             month=month,
             jobs=schedd_jobs,
@@ -1061,7 +1005,6 @@ def render_monthly_command(
         )
 
     top_level_result = _write_monthly_report_set(
-        output_root=resolved_output_root,
         year=year,
         month=month,
         jobs=jobs,
@@ -1072,6 +1015,7 @@ def render_monthly_command(
         accounting_groups_csv_path=reports_monthly_accounting_groups_csv_path(resolved_output_root, year, month),
         summary_path=reports_monthly_summary_path(resolved_output_root, year, month),
         index_path=reports_monthly_index_path(resolved_output_root, year, month),
+        plot_path=reports_monthly_wall_hours_plot_path(resolved_output_root, year, month),
         schedd_links=schedd_links,
     )
     summary = top_level_result["summary"]
@@ -1085,8 +1029,54 @@ def render_monthly_command(
     summary_table.add_row("Days included", str(summary.days_included))
     summary_table.add_row("Schedd reports", str(len(target_schedds)))
     summary_table.add_row("Output directory", str(index_path.parent))
+    if top_level_result["plot_path"] is not None:
+        summary_table.add_row("Plot", str(top_level_result["plot_path"]))
 
     console.print("[bold]Render Monthly[/bold]")
+    console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
+    console.print(f"  output     = {resolved_output_root}")
+    console.print(summary_table)
+
+
+@app.command("render-daily")
+def render_daily_command(
+    day: str = typer.Option(..., help="Day to render, e.g. 2026-04-21"),
+    config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    output_root: Optional[Path] = typer.Option(None, help="Root directory for derived and report data"),
+) -> None:
+    """Render one daily internal report from derived daily jobs."""
+    app_config = load_config(config)
+    resolved_output_root = output_root or app_config.storage.root
+    when = _parse_day(day)
+    jobs_path = derived_daily_jobs_file(resolved_output_root, when)
+    if not jobs_path.exists():
+        raise typer.BadParameter(f"derived daily jobs file is missing: {jobs_path}", param_hint="--day")
+
+    jobs = list(read_jsonl_zst(jobs_path))
+    result = write_report_set(
+        period_type="daily",
+        period_label=when.strftime("%Y-%m-%d"),
+        jobs=jobs,
+        output_dir=reports_daily_index_path(resolved_output_root, when).parent,
+        benchmark_type=app_config.benchmark.type,
+        benchmark_baseline=app_config.benchmark.baseline_per_core,
+        users_csv_path=reports_daily_users_csv_path(resolved_output_root, when),
+        vos_csv_path=reports_daily_vos_csv_path(resolved_output_root, when),
+        accounting_groups_csv_path=reports_daily_accounting_groups_csv_path(resolved_output_root, when),
+        summary_path=reports_daily_summary_path(resolved_output_root, when),
+        index_path=reports_daily_index_path(resolved_output_root, when),
+        plot_path=reports_daily_wall_hours_plot_path(resolved_output_root, when),
+    )
+
+    summary_table = Table(title="Daily report")
+    summary_table.add_column("Field")
+    summary_table.add_column("Value")
+    summary_table.add_row("Day", when.strftime("%Y-%m-%d"))
+    summary_table.add_row("Jobs", str(result["summary"].jobs_total))
+    summary_table.add_row("Output directory", str(result["index_path"].parent))
+    summary_table.add_row("Plot", str(result["plot_path"]))
+
+    console.print("[bold]Render Daily[/bold]")
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {resolved_output_root}")
     console.print(summary_table)

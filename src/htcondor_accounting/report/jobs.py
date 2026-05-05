@@ -66,7 +66,7 @@ def _distinct_marker(values: set[str]) -> str:
     return "MULTIPLE"
 
 
-def _accounting_group_key(job: dict[str, Any]) -> str:
+def accounting_group_key(job: dict[str, Any]) -> str:
     for key in ("acct_group", "accounting_group", "acct_group_user", "route_name"):
         value = _display_value(job.get(key))
         if value != "-":
@@ -197,7 +197,7 @@ def group_jobs_by_accounting_group(jobs: Iterable[dict[str, Any]]) -> list[Usage
     return _group_rows(
         jobs,
         group_type="accounting_group",
-        group_key_fn=_accounting_group_key,
+        group_key_fn=accounting_group_key,
         include_users=True,
         include_vo=True,
     )

@@ -15,6 +15,15 @@
   </div>
   <p class="note">{{ scaling_note }}</p>
 
+  {% if plot_href %}
+    <section class="report-section">
+      <div class="section-header">
+        <h2>Wall hours by accounting group</h2>
+      </div>
+      <img src="{{ plot_href }}" alt="Wall hours by accounting group">
+    </section>
+  {% endif %}
+
   {% if schedd_links %}
     <section class="report-section">
       <div class="section-header">

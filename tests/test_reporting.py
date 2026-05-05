@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from htcondor_accounting.export.csv import write_csv_rows
@@ -9,7 +10,13 @@ from htcondor_accounting.render.html import (
     format_hours,
     format_scaled_pair,
     render_monthly_report_html,
+    render_report_html,
 )
+from htcondor_accounting.render.plots import (
+    bucket_wall_hours_by_accounting_group,
+    write_wall_hours_by_accounting_group_plot,
+)
+from htcondor_accounting.report.builder import write_report_set
 from htcondor_accounting.report.jobs import (
     filter_jobs_by_schedd,
     group_jobs_by_accounting_group,
@@ -41,6 +48,7 @@ def _job(
     acct_group_user: str | None = None,
     accounting_group: str | None = None,
     route_name: str | None = None,
+    end_time: int = 2,
 ) -> dict:
     return {
         "schema_version": 1,
@@ -54,7 +62,7 @@ def _job(
         "vo_role": None,
         "auth_method": "scitoken",
         "start_time": 1,
-        "end_time": 2,
+        "end_time": end_time,
         "wall_seconds": wall_seconds,
         "cpu_user_seconds": cpu_user_seconds,
         "cpu_sys_seconds": cpu_sys_seconds,
@@ -77,6 +85,10 @@ def _write_daily_jobs(root: Path, day: str, jobs: list[dict]) -> None:
     year, month, day_number = day.split("-")
     path = root / "derived" / "daily" / year / month / day_number / "jobs.jsonl.zst"
     write_jsonl_zst(path, jobs)
+
+
+def _timestamp(year: int, month: int, day: int, hour: int) -> int:
+    return int(datetime(year, month, day, hour, tzinfo=timezone.utc).timestamp())
 
 
 def test_monthly_grouping_by_user_and_vo(tmp_path: Path) -> None:
@@ -347,6 +359,133 @@ def test_jinja_context_builds_sections_and_relative_links() -> None:
     assert context["sections"][2]["csv_href"] == "accounting_groups.csv"
     assert context["schedd_links"][0]["href"] == "schedds/schedd-a.example/index.html"
     assert "configured hepscore23 baseline of 20" in context["scaling_note"]
+
+
+def test_html_includes_relative_plot_link_when_present() -> None:
+    summary = build_monthly_report_summary(2026, 4, [])
+    context = build_monthly_report_context(
+        summary,
+        [],
+        [],
+        [],
+        benchmark_type="hepscore23",
+        benchmark_baseline=20.0,
+        plot_href="wall_hours_by_accounting_group.png",
+    )
+
+    html = render_monthly_report_html(context)
+
+    assert 'src="wall_hours_by_accounting_group.png"' in html
+    assert 'alt="Wall hours by accounting group"' in html
+
+
+def test_html_omits_plot_section_when_absent() -> None:
+    summary = build_monthly_report_summary(2026, 4, [])
+    context = build_monthly_report_context(
+        summary,
+        [],
+        [],
+        [],
+        benchmark_type="hepscore23",
+        benchmark_baseline=20.0,
+    )
+
+    html = render_report_html(context)
+
+    assert "Wall hours by accounting group</h2>" not in html
+    assert "wall_hours_by_accounting_group.png" not in html
+
+
+def test_daily_report_output_paths_and_files(tmp_path: Path) -> None:
+    jobs = [
+        _job(
+            "job-1",
+            day="2026-04-21",
+            user="alice",
+            vo="atlas",
+            wall_seconds=3600,
+            cpu_user_seconds=10,
+            cpu_sys_seconds=5,
+            processors=1,
+            memory_real_kb=100,
+            memory_virtual_kb=200,
+            acct_group="group-a",
+            end_time=_timestamp(2026, 4, 21, 8),
+        )
+    ]
+    report_dir = tmp_path / "reports" / "daily" / "2026" / "04" / "21"
+
+    result = write_report_set(
+        period_type="daily",
+        period_label="2026-04-21",
+        jobs=jobs,
+        output_dir=report_dir,
+        benchmark_type="hepscore23",
+        benchmark_baseline=20.0,
+        users_csv_path=report_dir / "users.csv",
+        vos_csv_path=report_dir / "vos.csv",
+        accounting_groups_csv_path=report_dir / "accounting_groups.csv",
+        summary_path=report_dir / "summary.json",
+        index_path=report_dir / "index.html",
+        plot_path=report_dir / "wall_hours_by_accounting_group.png",
+    )
+
+    assert result["index_path"] == report_dir / "index.html"
+    assert (report_dir / "users.csv").exists()
+    assert (report_dir / "vos.csv").exists()
+    assert (report_dir / "accounting_groups.csv").exists()
+    assert (report_dir / "summary.json").exists()
+    assert (report_dir / "index.html").exists()
+    assert (report_dir / "wall_hours_by_accounting_group.png").stat().st_size > 0
+    payload = json.loads((report_dir / "summary.json").read_text(encoding="utf-8"))
+    assert payload["record_type"] == "daily_report_summary"
+    assert payload["day"] == "2026-04-21"
+    html = (report_dir / "index.html").read_text(encoding="utf-8")
+    assert "HTCondor Accounting Daily Report 2026-04-21" in html
+    assert 'src="wall_hours_by_accounting_group.png"' in html
+
+
+def test_daily_plot_buckets_wall_hours_by_completion_hour(tmp_path: Path) -> None:
+    jobs = [
+        _job("job-1", day="2026-04-21", user="alice", vo="atlas", wall_seconds=3600, cpu_user_seconds=1, cpu_sys_seconds=1, processors=1, memory_real_kb=1, memory_virtual_kb=1, acct_group="group-a", end_time=_timestamp(2026, 4, 21, 8)),
+        _job("job-2", day="2026-04-21", user="bob", vo="atlas", wall_seconds=1800, cpu_user_seconds=1, cpu_sys_seconds=1, processors=1, memory_real_kb=1, memory_virtual_kb=1, acct_group="group-a", end_time=_timestamp(2026, 4, 21, 8)),
+        _job("job-3", day="2026-04-21", user="carol", vo="cms", wall_seconds=7200, cpu_user_seconds=1, cpu_sys_seconds=1, processors=1, memory_real_kb=1, memory_virtual_kb=1, accounting_group="group-b", end_time=_timestamp(2026, 4, 21, 9)),
+        _job("job-4", day="2026-04-21", user="dana", vo="cms", wall_seconds=3600, cpu_user_seconds=1, cpu_sys_seconds=1, processors=1, memory_real_kb=1, memory_virtual_kb=1, end_time=_timestamp(2026, 4, 21, 10)),
+    ]
+
+    bucketed = bucket_wall_hours_by_accounting_group(jobs, period_type="daily")
+    plot_path = write_wall_hours_by_accounting_group_plot(
+        jobs,
+        tmp_path / "wall_hours_by_accounting_group.png",
+        period_type="daily",
+        title="Daily",
+    )
+
+    assert bucketed["group-a"][8] == 1.5
+    assert bucketed["group-b"][9] == 2.0
+    assert bucketed["-"][10] == 1.0
+    assert plot_path.stat().st_size > 0
+
+
+def test_monthly_plot_buckets_wall_hours_by_completion_day(tmp_path: Path) -> None:
+    jobs = [
+        _job("job-1", day="2026-04-01", user="alice", vo="atlas", wall_seconds=3600, cpu_user_seconds=1, cpu_sys_seconds=1, processors=1, memory_real_kb=1, memory_virtual_kb=1, acct_group="group-a", end_time=_timestamp(2026, 4, 1, 23)),
+        _job("job-2", day="2026-04-02", user="bob", vo="atlas", wall_seconds=7200, cpu_user_seconds=1, cpu_sys_seconds=1, processors=1, memory_real_kb=1, memory_virtual_kb=1, acct_group="group-a", end_time=_timestamp(2026, 4, 2, 0)),
+        _job("job-3", day="2026-04-02", user="carol", vo="cms", wall_seconds=1800, cpu_user_seconds=1, cpu_sys_seconds=1, processors=1, memory_real_kb=1, memory_virtual_kb=1, route_name="route-c", end_time=_timestamp(2026, 4, 2, 13)),
+    ]
+
+    bucketed = bucket_wall_hours_by_accounting_group(jobs, period_type="monthly")
+    plot_path = write_wall_hours_by_accounting_group_plot(
+        jobs,
+        tmp_path / "wall_hours_by_accounting_group.png",
+        period_type="monthly",
+        title="Monthly",
+    )
+
+    assert bucketed["group-a"][1] == 1.0
+    assert bucketed["group-a"][2] == 2.0
+    assert bucketed["route-c"][2] == 0.5
+    assert plot_path.stat().st_size > 0
 
 
 def test_html_helpers_format_human_units_and_scaled_pairs() -> None:

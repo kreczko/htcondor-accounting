@@ -68,7 +68,22 @@ pixi run htcondor-accounting validate-day --day 2026-04-21 --format json
 
 This is intended as a practical pre/post-production sanity check. It reads only local files, compares counts across raw history, canonical, derived, staged, and pushed outputs, and highlights missing VO/FQAN/accounting-group fields.
 
-## Monthly Reports
+## Daily And Monthly Reports
+
+Render a daily internal report from derived daily jobs:
+
+```bash
+pixi run htcondor-accounting render-daily --day 2026-04-21
+```
+
+This writes:
+
+- `archive/reports/daily/2026/04/21/users.csv`
+- `archive/reports/daily/2026/04/21/vos.csv`
+- `archive/reports/daily/2026/04/21/accounting_groups.csv`
+- `archive/reports/daily/2026/04/21/summary.json`
+- `archive/reports/daily/2026/04/21/index.html`
+- `archive/reports/daily/2026/04/21/wall_hours_by_accounting_group.png`
 
 Render a monthly internal report from derived daily jobs:
 
@@ -83,8 +98,10 @@ This writes:
 - `archive/reports/monthly/2026/04/accounting_groups.csv`
 - `archive/reports/monthly/2026/04/summary.json`
 - `archive/reports/monthly/2026/04/index.html`
+- `archive/reports/monthly/2026/04/wall_hours_by_accounting_group.png`
 - `archive/reports/monthly/2026/04/schedds/<schedd>/index.html`
 
 `users.csv` now includes a resolved `vo` column, `vos.csv` includes a distinct `users` count, and `accounting_groups.csv` provides an internal accounting-group cross-check view.
 The monthly HTML page is rendered from Jinja templates in `src/htcondor_accounting/templates/`, uses relative links, and keeps presentation logic separate from Python data preparation.
 Per-schedd monthly pages are generated alongside the top-level month report and link back to the parent overview with relative paths.
+Daily and monthly HTML pages embed a static PNG plot of unscaled wall hours by accounting group. Daily plots bucket jobs by UTC completion hour; monthly plots bucket jobs by UTC completion day.

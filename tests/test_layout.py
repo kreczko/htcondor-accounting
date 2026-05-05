@@ -20,6 +20,13 @@ from htcondor_accounting.store.layout import (
     manifest_day_dir,
     manifest_file,
     raw_history_run_file,
+    reports_daily_accounting_groups_csv_path,
+    reports_daily_dir,
+    reports_daily_index_path,
+    reports_daily_summary_path,
+    reports_daily_users_csv_path,
+    reports_daily_vos_csv_path,
+    reports_daily_wall_hours_plot_path,
     reports_monthly_accounting_groups_csv_path,
     reports_monthly_dir,
     reports_monthly_index_path,
@@ -93,6 +100,23 @@ def test_reports_monthly_layout_paths() -> None:
     assert reports_monthly_schedd_accounting_groups_csv_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/accounting_groups.csv")
     assert reports_monthly_schedd_summary_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/summary.json")
     assert reports_monthly_schedd_index_path(root, 2026, 4, "schedd.example") == Path("archive/reports/monthly/2026/04/schedds/schedd.example/index.html")
+
+
+def test_reports_daily_layout_paths() -> None:
+    root = Path("archive")
+    when = datetime(2026, 4, 21, 12, 0, 0, tzinfo=timezone.utc)
+
+    assert reports_daily_dir(root, when) == Path("archive/reports/daily/2026/04/21")
+    assert reports_daily_users_csv_path(root, when) == Path("archive/reports/daily/2026/04/21/users.csv")
+    assert reports_daily_vos_csv_path(root, when) == Path("archive/reports/daily/2026/04/21/vos.csv")
+    assert reports_daily_accounting_groups_csv_path(root, when) == Path(
+        "archive/reports/daily/2026/04/21/accounting_groups.csv"
+    )
+    assert reports_daily_summary_path(root, when) == Path("archive/reports/daily/2026/04/21/summary.json")
+    assert reports_daily_index_path(root, when) == Path("archive/reports/daily/2026/04/21/index.html")
+    assert reports_daily_wall_hours_plot_path(root, when) == Path(
+        "archive/reports/daily/2026/04/21/wall_hours_by_accounting_group.png"
+    )
 
 
 def test_apel_layout_paths() -> None:

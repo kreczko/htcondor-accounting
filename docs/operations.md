@@ -71,7 +71,21 @@ Skip push during testing:
 HTCONDOR_ACCOUNTING_PUSH=0 scripts/run_daily_pipeline.sh /srv/htcondor-accounting 2026-04-17
 ```
 
-## Monthly Reporting
+## Daily And Monthly Reporting
+
+Generate a simple internal daily report from the deduplicated daily jobs:
+
+```bash
+pixi run htcondor-accounting render-daily --day 2026-04-21
+```
+
+Daily outputs are written under:
+
+```text
+output_root/reports/daily/YYYY/MM/DD/
+```
+
+Each daily report includes `users.csv`, `vos.csv`, `accounting_groups.csv`, `summary.json`, `index.html`, and `wall_hours_by_accounting_group.png`.
 
 Generate a simple internal monthly report from the deduplicated daily jobs:
 
@@ -100,6 +114,7 @@ The monthly CSV set currently includes:
 The monthly `index.html` page links to those CSVs with relative paths and presents a compact human-readable view using hours and GB for display.
 It is rendered from Jinja templates in `src/htcondor_accounting/templates/`, which keeps the current one-page monthly layout reusable for later per-schedd reporting work.
 The top-level monthly page also links relatively to each available schedd report, and each schedd page links back to the parent monthly overview.
+Daily and monthly report pages embed static PNG plots generated with matplotlib. The plot shows unscaled wall hours grouped by the same accounting-group key used by `accounting_groups.csv`; daily reports bucket jobs by UTC completion hour, and monthly reports bucket jobs by UTC completion day.
 
 ## Day Validation
 

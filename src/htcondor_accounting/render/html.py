@@ -5,7 +5,7 @@ from typing import Any
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from htcondor_accounting.models.reporting import MonthlyReportSummary, UsageGroupRow
+from htcondor_accounting.models.reporting import DailyReportSummary, MonthlyReportSummary, UsageGroupRow
 
 
 def format_hours(seconds: int | float | None) -> str:
@@ -77,36 +77,42 @@ def _build_rows(rows: list[UsageGroupRow], kind: str) -> list[dict[str, str]]:
     return items
 
 
-def build_monthly_report_context(
-    summary: MonthlyReportSummary,
+def build_report_context(
+    *,
+    period_type: str,
+    summary: MonthlyReportSummary | DailyReportSummary,
     user_rows: list[UsageGroupRow],
     vo_rows: list[UsageGroupRow],
     accounting_group_rows: list[UsageGroupRow],
-    *,
     benchmark_type: str,
     benchmark_baseline: float,
     schedd_name: str | None = None,
     parent_index_link: str | None = None,
     schedd_links: list[dict[str, str]] | None = None,
+    plot_href: str | None = None,
 ) -> dict[str, Any]:
     scaling_note = (
         f"Scaled values are adjusted relative to the configured {benchmark_type} baseline of "
         f"{benchmark_baseline:g}. The machine benchmark of the node each job ran on is used to "
         "normalize usage across nodes with different performance."
     )
+    period_name = "Daily" if period_type == "daily" else "Monthly"
+    period_item_label = "Day" if period_type == "daily" else "Month"
+    title_period = summary.period
 
     return {
         "title": (
-            f"HTCondor Accounting Monthly Report {summary.period} - {schedd_name}"
+            f"HTCondor Accounting {period_name} Report {title_period} - {schedd_name}"
             if schedd_name
-            else f"HTCondor Accounting Monthly Report {summary.period}"
+            else f"HTCondor Accounting {period_name} Report {title_period}"
         ),
-        "month_label": summary.period,
+        "period_label": summary.period,
+        "period_type": period_type,
         "schedd_name": schedd_name,
         "parent_index_link": parent_index_link,
         "schedd_links": schedd_links or [],
         "summary_items": [
-            {"label": "Month", "value": summary.period},
+            {"label": period_item_label, "value": summary.period},
             *([{"label": "Schedd", "value": schedd_name}] if schedd_name else []),
             {"label": "Days Included", "value": str(summary.days_included)},
             {"label": "Total Jobs", "value": str(summary.jobs_total)},
@@ -114,6 +120,7 @@ def build_monthly_report_context(
             {"label": "Total CPU Hours", "value": format_hours(summary.cpu_total_seconds)},
         ],
         "scaling_note": scaling_note,
+        "plot_href": plot_href,
         "sections": [
             {
                 "title": "Users",
@@ -140,6 +147,34 @@ def build_monthly_report_context(
     }
 
 
+def build_monthly_report_context(
+    summary: MonthlyReportSummary,
+    user_rows: list[UsageGroupRow],
+    vo_rows: list[UsageGroupRow],
+    accounting_group_rows: list[UsageGroupRow],
+    *,
+    benchmark_type: str,
+    benchmark_baseline: float,
+    schedd_name: str | None = None,
+    parent_index_link: str | None = None,
+    schedd_links: list[dict[str, str]] | None = None,
+    plot_href: str | None = None,
+) -> dict[str, Any]:
+    return build_report_context(
+        period_type="monthly",
+        summary=summary,
+        user_rows=user_rows,
+        vo_rows=vo_rows,
+        accounting_group_rows=accounting_group_rows,
+        benchmark_type=benchmark_type,
+        benchmark_baseline=benchmark_baseline,
+        schedd_name=schedd_name,
+        parent_index_link=parent_index_link,
+        schedd_links=schedd_links,
+        plot_href=plot_href,
+    )
+
+
 @lru_cache(maxsize=1)
 def _jinja_environment() -> Environment:
     return Environment(
@@ -148,6 +183,10 @@ def _jinja_environment() -> Environment:
     )
 
 
-def render_monthly_report_html(context: dict[str, Any]) -> str:
+def render_report_html(context: dict[str, Any]) -> str:
     template = _jinja_environment().get_template("monthly_report.html")
     return template.render(**context)
+
+
+def render_monthly_report_html(context: dict[str, Any]) -> str:
+    return render_report_html(context)
