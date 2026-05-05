@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +17,10 @@ from htcondor_accounting.store.layout import (
     derived_daily_jobs_file,
     ensure_parent_dir,
 )
+
+
+APEL_INDIVIDUAL_JOB_MESSAGE_HEADER = "APEL-individual-job-message: v0.3"
+APEL_RECORD_SEPARATOR = "\n%%\n"
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,10 @@ class ApelDailyExportResult:
     total_bytes: int
     files_written: list[dict[str, Any]]
     manifest_path: Path
+
+
+def build_apel_message_body(records: list[str]) -> str:
+    return f"{APEL_INDIVIDUAL_JOB_MESSAGE_HEADER}\n{APEL_RECORD_SEPARATOR.join(records)}{APEL_RECORD_SEPARATOR}"
 
 
 def load_daily_jobs(root: Path, when: datetime) -> list[dict[str, Any]]:
@@ -82,31 +89,36 @@ def filter_jobs_for_apel_export(
 def pack_apel_messages(records: list[str], soft_limit_bytes: int, hard_limit_bytes: int) -> list[ApelMessageChunk]:
     chunks: list[ApelMessageChunk] = []
     current_records: list[str] = []
-    current_bytes = 0
 
     for record in records:
-        record_bytes = len(record.encode("utf-8"))
-        if record_bytes > hard_limit_bytes:
+        single_record_body = build_apel_message_body([record])
+        single_record_bytes = len(single_record_body.encode("utf-8"))
+        if single_record_bytes > hard_limit_bytes:
             raise ValueError(
-                f"Single APEL record is {record_bytes} bytes, exceeding hard limit {hard_limit_bytes} bytes"
+                f"Single APEL message record is {single_record_bytes} bytes with framing, "
+                f"exceeding hard limit {hard_limit_bytes} bytes"
             )
 
-        if current_records and current_bytes + record_bytes > soft_limit_bytes:
-            body = "".join(current_records)
-            chunks.append(ApelMessageChunk(body=body, records=len(current_records), bytes=len(body.encode("utf-8"))))
-            current_records = []
-            current_bytes = 0
+        candidate_records = [*current_records, record]
+        candidate_body = build_apel_message_body(candidate_records)
+        candidate_bytes = len(candidate_body.encode("utf-8"))
 
-        if current_bytes + record_bytes > hard_limit_bytes:
+        if current_records and candidate_bytes > soft_limit_bytes:
+            body = build_apel_message_body(current_records)
+            chunks.append(ApelMessageChunk(body=body, records=len(current_records), bytes=len(body.encode("utf-8"))))
+            candidate_records = [record]
+            candidate_body = single_record_body
+            candidate_bytes = single_record_bytes
+
+        if candidate_bytes > hard_limit_bytes:
             raise ValueError(
                 f"APEL message would exceed hard limit {hard_limit_bytes} bytes while adding next record"
             )
 
-        current_records.append(record)
-        current_bytes += record_bytes
+        current_records = candidate_records
 
     if current_records:
-        body = "".join(current_records)
+        body = build_apel_message_body(current_records)
         chunks.append(ApelMessageChunk(body=body, records=len(current_records), bytes=len(body.encode("utf-8"))))
 
     return chunks

@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from htcondor_accounting.config.models import ApelConfig
-from htcondor_accounting.export.apel_messages import export_apel_daily, pack_apel_messages
+from htcondor_accounting.export.apel_messages import (
+    APEL_INDIVIDUAL_JOB_MESSAGE_HEADER,
+    APEL_RECORD_SEPARATOR,
+    build_apel_message_body,
+    export_apel_daily,
+    pack_apel_messages,
+)
 from htcondor_accounting.export.apel_records import apel_record_text
 from htcondor_accounting.export.dirq import dirq_components_from_bytes, promote_staged_message, read_staged_message_info
 from htcondor_accounting.export.ledger import (
@@ -12,7 +18,7 @@ from htcondor_accounting.export.ledger import (
     write_resend_marker,
     write_sent_marker,
 )
-from htcondor_accounting.store.jsonl import read_jsonl_zst, write_jsonl_zst
+from htcondor_accounting.store.jsonl import write_jsonl_zst
 from htcondor_accounting.store.layout import RunStamp, apel_ledger_resends_dir, apel_ledger_sent_marker_path
 
 
@@ -75,7 +81,8 @@ def _apel_config(tmp_path: Path, *, soft: int = 800000, hard: int = 1000000) -> 
 def test_apel_record_text_has_expected_fields(tmp_path: Path) -> None:
     text = apel_record_text(_derived_job("host#123.0#999", local_user="alice", vo="atlas", wall_seconds=10, cpu_total_seconds=7), _apel_config(tmp_path))
 
-    assert text.startswith("%%\n")
+    assert text.startswith("Site: UKI-SOUTHGRID-BRIS-HEP\n")
+    assert not text.startswith("%%")
     assert "Site: UKI-SOUTHGRID-BRIS-HEP" in text
     assert "SubmitHost: submit.example" in text
     assert "LocalJobId: 123.0" in text
@@ -86,8 +93,24 @@ def test_apel_record_text_has_expected_fields(tmp_path: Path) -> None:
     assert "ServiceLevelType: hepscore23" in text
 
 
+def test_build_apel_message_body_uses_individual_job_header_and_separators(tmp_path: Path) -> None:
+    config = _apel_config(tmp_path)
+    records = [
+        apel_record_text(_derived_job("host#1.0#999", local_user="alice", vo="atlas", wall_seconds=10, cpu_total_seconds=7), config),
+        apel_record_text(_derived_job("host#2.0#999", local_user="bob", vo="cms", wall_seconds=20, cpu_total_seconds=11), config),
+    ]
+
+    body = build_apel_message_body(records)
+
+    assert body.startswith(f"{APEL_INDIVIDUAL_JOB_MESSAGE_HEADER}\nSite: UKI-SOUTHGRID-BRIS-HEP\n")
+    assert not body.startswith("%%")
+    assert f"ServiceLevel: 2.0{APEL_RECORD_SEPARATOR}Site: UKI-SOUTHGRID-BRIS-HEP" in body
+    assert body.endswith(APEL_RECORD_SEPARATOR)
+    assert body.count(APEL_RECORD_SEPARATOR) == 2
+
+
 def test_pack_apel_messages_chunks_deterministically(tmp_path: Path) -> None:
-    config = _apel_config(tmp_path, soft=400, hard=1000)
+    config = _apel_config(tmp_path, soft=450, hard=1000)
     texts = [
         apel_record_text(_derived_job(f"host#{index}.0#999", local_user=f"user{index}", vo="atlas", wall_seconds=10, cpu_total_seconds=7), config)
         for index in range(1, 4)
@@ -96,9 +119,24 @@ def test_pack_apel_messages_chunks_deterministically(tmp_path: Path) -> None:
     chunks = pack_apel_messages(texts, config.message_soft_limit_bytes, config.message_hard_limit_bytes)
 
     assert len(chunks) >= 2
-    assert chunks[0].body.startswith("%%\n")
+    assert chunks[0].body.startswith(f"{APEL_INDIVIDUAL_JOB_MESSAGE_HEADER}\n")
+    assert not chunks[0].body.startswith("%%")
     assert all(chunk.bytes <= config.message_hard_limit_bytes for chunk in chunks)
     assert chunks[0].records + chunks[1].records <= 3
+
+
+def test_pack_apel_messages_includes_framing_in_hard_limit(tmp_path: Path) -> None:
+    config = _apel_config(tmp_path)
+    record = apel_record_text(_derived_job("host#1.0#999", local_user="alice", vo="atlas", wall_seconds=10, cpu_total_seconds=7), config)
+    record_bytes = len(record.encode("utf-8"))
+    framed_bytes = len(build_apel_message_body([record]).encode("utf-8"))
+
+    try:
+        pack_apel_messages([record], soft_limit_bytes=framed_bytes, hard_limit_bytes=record_bytes)
+    except ValueError as exc:
+        assert "with framing" in str(exc)
+    else:
+        raise AssertionError("expected pack_apel_messages to include header and trailing separator in hard-limit check")
 
 
 def test_export_apel_daily_writes_messages_and_manifest(tmp_path: Path) -> None:
@@ -137,8 +175,34 @@ def test_export_apel_daily_writes_messages_and_manifest(tmp_path: Path) -> None:
 
     for entry in manifest["files_written"]:
         body = Path(entry["path"]).read_text(encoding="utf-8")
-        assert body.startswith("%%\n")
+        assert body.startswith(f"{APEL_INDIVIDUAL_JOB_MESSAGE_HEADER}\nSite: UKI-SOUTHGRID-BRIS-HEP\n")
+        assert not body.startswith("%%")
+        assert body.endswith(APEL_RECORD_SEPARATOR)
         assert len(body.encode("utf-8")) == entry["bytes"]
+
+
+def test_export_apel_daily_staged_message_content_matches_expected_format(tmp_path: Path) -> None:
+    output_root = tmp_path / "archive"
+    jobs = [
+        _derived_job("host#1.0#999", local_user="alice", vo="atlas", wall_seconds=10, cpu_total_seconds=7),
+        _derived_job("host#2.0#999", local_user="bob", vo="cms", wall_seconds=20, cpu_total_seconds=11),
+    ]
+    jobs_path = output_root / "derived" / "daily" / "2026" / "04" / "17" / "jobs.jsonl.zst"
+    write_jsonl_zst(jobs_path, jobs)
+    config = _apel_config(tmp_path, soft=2000, hard=3000)
+
+    result = export_apel_daily(
+        output_root,
+        datetime(2026, 4, 17, tzinfo=timezone.utc),
+        config,
+        RunStamp(datetime(2026, 4, 21, 12, 30, 38, tzinfo=timezone.utc)),
+    )
+
+    assert result.messages_written == 1
+    staged_path = Path(result.files_written[0]["path"])
+    assert staged_path.read_text(encoding="utf-8") == build_apel_message_body(
+        [apel_record_text(job, config) for job in jobs]
+    )
 
 
 def test_export_apel_daily_skips_jobs_from_disallowed_schedds(tmp_path: Path) -> None:

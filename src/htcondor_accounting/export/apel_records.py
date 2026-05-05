@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from htcondor_accounting.config.models import ApelConfig
@@ -110,6 +109,5 @@ def build_apel_record_fields(record: dict[str, Any], config: ApelConfig) -> dict
 
 def apel_record_text(record: dict[str, Any], config: ApelConfig) -> str:
     fields = build_apel_record_fields(record, config)
-    lines = ["%%"]
-    lines.extend(f"{key}: {fields[key]}" for key in APEL_FIELD_ORDER)
-    return "\n".join(lines) + "\n"
+    lines = [f"{key}: {fields[key]}" for key in APEL_FIELD_ORDER]
+    return "\n".join(lines)
