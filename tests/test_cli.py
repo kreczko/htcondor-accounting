@@ -5,6 +5,7 @@ import json
 from typer.testing import CliRunner
 
 import htcondor_accounting.cli as cli
+from htcondor_accounting.config.models import AppConfig
 from htcondor_accounting.cli import app
 from htcondor_accounting.models.canonical import (
     BenchmarkInfo,
@@ -19,6 +20,29 @@ from htcondor_accounting.store.jsonl import write_jsonl_zst
 
 
 runner = CliRunner()
+
+DEFAULT_TEST_SCHEDDS = [
+    "lcgce02.phy.bris.ac.uk",
+    "hm01.dice.priv",
+    "sc01.dice.priv",
+]
+
+
+def _write_schedd_config(tmp_path: Path) -> Path:
+    config_path = tmp_path / "site.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "[storage]",
+                f'root = "{tmp_path / "archive"}"',
+                "",
+                "[extract]",
+                'default_schedds = ["lcgce02.phy.bris.ac.uk", "hm01.dice.priv", "sc01.dice.priv"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return config_path
 
 
 def _stub_daily_pipeline_steps(monkeypatch) -> list[str]:
@@ -38,6 +62,15 @@ def _stub_daily_pipeline_steps(monkeypatch) -> list[str]:
     monkeypatch.setattr(cli, "push_apel_daily_command", stub("push-apel-daily"))
     monkeypatch.setattr(cli, "validate_day_command", stub("validate-day"))
     return calls
+
+
+def test_resolve_schedds_uses_cli_values_or_all_config_defaults() -> None:
+    app_config = AppConfig()
+    app_config.extract.default_schedds = DEFAULT_TEST_SCHEDDS
+
+    assert cli.resolve_schedds(None, app_config) == DEFAULT_TEST_SCHEDDS
+    assert cli.resolve_schedds((), app_config) == DEFAULT_TEST_SCHEDDS
+    assert cli.resolve_schedds(["hm01.dice.priv"], app_config) == ["hm01.dice.priv"]
 
 
 def test_run_day_executes_pipeline_steps_in_order(monkeypatch, tmp_path: Path) -> None:
@@ -92,6 +125,86 @@ def test_run_day_no_export_skips_export_and_push(monkeypatch, tmp_path: Path) ->
     assert "validate-day" in calls
 
 
+def test_run_day_passes_all_config_default_schedds_to_snapshot_and_extract(monkeypatch, tmp_path: Path) -> None:
+    config_path = _write_schedd_config(tmp_path)
+    captured: dict[str, list[str]] = {}
+
+    def fake_snapshot_history(*args, **kwargs):
+        captured["snapshot"] = kwargs["schedd"]
+
+    def fake_extract(*args, **kwargs):
+        captured["extract"] = kwargs["schedd"]
+
+    def noop(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(cli, "snapshot_history", fake_snapshot_history)
+    monkeypatch.setattr(cli, "extract", fake_extract)
+    monkeypatch.setattr(cli, "derive_daily_command", noop)
+    monkeypatch.setattr(cli, "derive_rollups_command", noop)
+
+    result = runner.invoke(
+        app,
+        [
+            "run-day",
+            "--day",
+            "2026-04-21",
+            "--config",
+            str(config_path),
+            "--no-export",
+            "--no-validate",
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert captured == {
+        "snapshot": DEFAULT_TEST_SCHEDDS,
+        "extract": DEFAULT_TEST_SCHEDDS,
+    }
+
+
+def test_run_day_cli_schedd_overrides_config_defaults(monkeypatch, tmp_path: Path) -> None:
+    config_path = _write_schedd_config(tmp_path)
+    captured: dict[str, list[str]] = {}
+
+    def fake_snapshot_history(*args, **kwargs):
+        captured["snapshot"] = kwargs["schedd"]
+
+    def fake_extract(*args, **kwargs):
+        captured["extract"] = kwargs["schedd"]
+
+    def noop(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(cli, "snapshot_history", fake_snapshot_history)
+    monkeypatch.setattr(cli, "extract", fake_extract)
+    monkeypatch.setattr(cli, "derive_daily_command", noop)
+    monkeypatch.setattr(cli, "derive_rollups_command", noop)
+
+    result = runner.invoke(
+        app,
+        [
+            "run-day",
+            "--day",
+            "2026-04-21",
+            "--config",
+            str(config_path),
+            "--schedd",
+            "hm01.dice.priv",
+            "--no-export",
+            "--no-validate",
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert captured == {
+        "snapshot": ["hm01.dice.priv"],
+        "extract": ["hm01.dice.priv"],
+    }
+
+
 def test_run_range_iterates_days_inclusively_and_defaults_to_no_push(monkeypatch, tmp_path: Path) -> None:
     calls: list[tuple[str, bool]] = []
 
@@ -117,6 +230,71 @@ def test_run_range_iterates_days_inclusively_and_defaults_to_no_push(monkeypatch
 
     assert result.exit_code == 0
     assert calls == [("2026-04-29", False), ("2026-04-30", False), ("2026-05-01", False)]
+
+
+def test_run_range_passes_all_config_default_schedds(monkeypatch, tmp_path: Path) -> None:
+    config_path = _write_schedd_config(tmp_path)
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_run_day_pipeline(**kwargs):
+        calls.append((kwargs["day"], kwargs["schedds"]))
+        return ["ok"]
+
+    monkeypatch.setattr(cli, "_run_day_pipeline", fake_run_day_pipeline)
+
+    result = runner.invoke(
+        app,
+        [
+            "run-range",
+            "--start",
+            "2026-04-29",
+            "--end",
+            "2026-05-01",
+            "--config",
+            str(config_path),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        ("2026-04-29", DEFAULT_TEST_SCHEDDS),
+        ("2026-04-30", DEFAULT_TEST_SCHEDDS),
+        ("2026-05-01", DEFAULT_TEST_SCHEDDS),
+    ]
+
+
+def test_run_range_cli_schedd_overrides_config_defaults(monkeypatch, tmp_path: Path) -> None:
+    config_path = _write_schedd_config(tmp_path)
+    calls: list[tuple[str, list[str]]] = []
+
+    def fake_run_day_pipeline(**kwargs):
+        calls.append((kwargs["day"], kwargs["schedds"]))
+        return ["ok"]
+
+    monkeypatch.setattr(cli, "_run_day_pipeline", fake_run_day_pipeline)
+
+    result = runner.invoke(
+        app,
+        [
+            "run-range",
+            "--start",
+            "2026-04-29",
+            "--end",
+            "2026-04-30",
+            "--config",
+            str(config_path),
+            "--schedd",
+            "hm01.dice.priv",
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        ("2026-04-29", ["hm01.dice.priv"]),
+        ("2026-04-30", ["hm01.dice.priv"]),
+    ]
 
 
 def test_run_range_push_enables_push(monkeypatch, tmp_path: Path) -> None:

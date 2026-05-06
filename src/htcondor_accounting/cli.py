@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from htcondor_accounting.config.load import load_config, resolve_config_path, resolve_reports_root
+from htcondor_accounting.config.models import AppConfig
 from htcondor_accounting.export.csv import write_csv_rows
 from htcondor_accounting.export.apel_messages import export_apel_daily, staged_apel_files
 from htcondor_accounting.export.dirq import promote_staged_message, read_staged_message_info
@@ -105,6 +106,12 @@ def _parse_day(value: str) -> datetime:
 
 def _parse_date(value: str) -> date:
     return _parse_day(value).date()
+
+
+def resolve_schedds(cli_schedds: Iterable[str] | None, app_config: AppConfig) -> list[str]:
+    if cli_schedds:
+        return list(cli_schedds)
+    return list(app_config.extract.default_schedds)
 
 
 def _source_name(schedd_name: str) -> str:
@@ -557,7 +564,7 @@ def extract(
     )
 
     app_config = load_config(config)
-    resolved_schedds = list(schedd) if schedd is not None else list(app_config.extract.default_schedds)
+    resolved_schedds = resolve_schedds(schedd, app_config)
     resolved_output_root = output_root or app_config.storage.root
     resolved_site_name = site_name or app_config.site.name
     resolved_match = match if match is not None else app_config.extract.default_match
@@ -768,7 +775,7 @@ def snapshot_history(
     from htcondor_accounting.extract.htcondor import HistoryQuery, fetch_history_ads
 
     app_config = load_config(config)
-    resolved_schedds = list(schedd) if schedd is not None else list(app_config.extract.default_schedds)
+    resolved_schedds = resolve_schedds(schedd, app_config)
     resolved_output_root = output_root or app_config.storage.root
     resolved_match = match if match is not None else app_config.extract.default_match
 
@@ -1351,6 +1358,7 @@ def _run_day_pipeline(
     *,
     day: str,
     config: Optional[Path],
+    schedds: list[str],
     output_root: Optional[Path],
     snapshot_enabled: bool,
     export_enabled: bool,
@@ -1370,7 +1378,7 @@ def _run_day_pipeline(
                 start=day,
                 end=day,
                 config=config,
-                schedd=None,
+                schedd=schedds,
                 output_root=output_root,
                 match=None,
             ),
@@ -1384,7 +1392,7 @@ def _run_day_pipeline(
             start=day,
             end=day,
             config=config,
-            schedd=None,
+            schedd=schedds,
             output_root=output_root,
             site_name=None,
             match=None,
@@ -1432,6 +1440,11 @@ def _run_day_pipeline(
 def run_day_command(
     day: str = typer.Option(..., help="Day to run, e.g. 2026-04-21"),
     config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    schedd: Optional[List[str]] = typer.Option(
+        None,
+        "--schedd",
+        help="Schedd hostname to process; may be given multiple times",
+    ),
     output_root: Optional[Path] = typer.Option(None, help="Root directory for pipeline outputs"),
     no_snapshot: bool = typer.Option(False, "--no-snapshot", help="Skip raw history snapshot"),
     no_export: bool = typer.Option(False, "--no-export", help="Skip APEL export and push"),
@@ -1440,14 +1453,18 @@ def run_day_command(
 ) -> None:
     """Run the standard accounting pipeline for one day."""
     _parse_day(day)
+    app_config = load_config(config)
+    resolved_schedds = resolve_schedds(schedd, app_config)
     console.print("[bold]Run Day[/bold]")
     console.print(f"  day        = {day}")
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {output_root or '<config default>'}")
+    console.print(f"  schedds    = {resolved_schedds or ['local']}")
 
     completed = _run_day_pipeline(
         day=day,
         config=config,
+        schedds=resolved_schedds,
         output_root=output_root,
         snapshot_enabled=not no_snapshot,
         export_enabled=not no_export,
@@ -1466,6 +1483,11 @@ def run_range_command(
     start: str = typer.Option(..., help="Start day, e.g. 2026-04-01"),
     end: str = typer.Option(..., help="End day, e.g. 2026-04-30"),
     config: Optional[Path] = typer.Option(None, help="Path to site config file"),
+    schedd: Optional[List[str]] = typer.Option(
+        None,
+        "--schedd",
+        help="Schedd hostname to process; may be given multiple times",
+    ),
     output_root: Optional[Path] = typer.Option(None, help="Root directory for pipeline outputs"),
     no_snapshot: bool = typer.Option(False, "--no-snapshot", help="Skip raw history snapshot"),
     no_export: bool = typer.Option(False, "--no-export", help="Skip APEL export and push"),
@@ -1477,6 +1499,8 @@ def run_range_command(
     start_date = _parse_date(start)
     end_date = _parse_date(end)
     days = iter_inclusive_dates(start_date, end_date)
+    app_config = load_config(config)
+    resolved_schedds = resolve_schedds(schedd, app_config)
     push_enabled = push and not no_push
 
     console.print("[bold]Run Range[/bold]")
@@ -1485,6 +1509,7 @@ def run_range_command(
     console.print(f"  days       = {len(days)}")
     console.print(f"  config     = {resolve_config_path(config) or '<defaults>'}")
     console.print(f"  output     = {output_root or '<config default>'}")
+    console.print(f"  schedds    = {resolved_schedds or ['local']}")
     console.print(f"  push       = {'enabled' if push_enabled and not no_export else 'skipped'}")
 
     completed_days = 0
@@ -1494,6 +1519,7 @@ def run_range_command(
         _run_day_pipeline(
             day=day_text,
             config=config,
+            schedds=resolved_schedds,
             output_root=output_root,
             snapshot_enabled=not no_snapshot,
             export_enabled=not no_export,
